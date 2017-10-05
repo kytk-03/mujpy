@@ -70,7 +70,7 @@ class mugui(object):
         self.first_t0plot = True
 # paths
         self.__path__ = os.path.dirname(MuJPyName)
-        self.__logopath__ = os.path.join(self.__path__,"logo"
+        self.__logopath__ = os.path.join(self.__path__,"logo")
     def about(self):
         '''
         a few infos (version and authors)
