@@ -1,10 +1,9 @@
 import numpy as np
-import musuite
-import muset
-from mucomponents.mufcn import mufcn as fcn
+# import musuite
+# import muset
+from mujpy.mucomponents.mufcn import mufcn as fcn
 from scipy.constants import physical_constants as C
 import matplotlib.pyplot as P
-
 
 class MuFit(object):                        # defines the python class
     def __init__(self,instance_name=None):
@@ -75,7 +74,7 @@ class MuFit(object):                        # defines the python class
         myfit.setup(mset,msuite) # after initialization calls (see MuFit.setup)
         myfit.addmodel('daml') # e.g. for an alpha calibration run
         myfit.asymmetry(run) # run is a murs2py instance read from a data file
-             mset, msuite are a muset and musuite instance, respectively
+        #     mset, msuite are a muset and musuite instance, respectively check
         checks if this is the first run by previous_binWidth_ns
         adds aymmetry end error from a run over maximum available bins
         bin partial selection by interval is done elsewhere
@@ -309,28 +308,29 @@ class MuFit(object):                        # defines the python class
         self.numberHisto = []
         self.histoLength = []
 
-    def setup(self,mset,msuite):
-        """
-        run = musr2py()
-        run.read('deltat_tdc_gps_0433.bin')  # e.g. 
-        myfit = MuFit()
-        mset = muset(run)
-        mset.fit()
-        msuite = musuite()
-        myfit.setup(mset,msuite) # setup is a musuite instance containing alpha, group
-        """
-        self.alpha = mset.alpha
-        self.group = mset.group
-        self.offset = mset.offset
-        self.interval = mset.interval
-        self.plt_ini = self.interval[0]
-        self.plt_lst = self.interval[1]
-        self.binning = mset.binning
-        self.nt0 = msuite.nt0
-        self.dt0 = msuite.dt0
-        self.firstbin = msuite.firstbin
-        self.lastbin = msuite.lastbin
-        self.binwidth_ns = []
+#    def setup(self,mset,msuite):
+#        """
+#        migrated to gui
+#        run = musr2py()
+#        run.read('deltat_tdc_gps_0433.bin')  # e.g. 
+#        myf it = MuFit()
+#        mset = muset(run)
+#        mset.fit()
+#        msuite = musuite()
+#        myfit.setup(mset,msuite) # setup is a musuite instance containing alpha, group
+#        """
+#        self.alpha = mset.alpha
+#        self.group = mset.group
+#        self.offset = mset.offset
+#        self.interval = mset.interval
+#        self.plt_ini = self.interval[0]
+#        self.plt_lst = self.interval[1]
+#        self.binning = mset.binning
+#        self.nt0 = msuite.nt0
+#        self.dt0 = msuite.dt0
+#        self.firstbin = msuite.firstbin
+#        self.lastbin = msuite.lastbin
+#        self.binwidth_ns = []
 
     def save(self,path):
         """

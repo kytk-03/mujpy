@@ -2,13 +2,14 @@ from ipywidgets import Text, IntText, FloatText, Textarea, Label, \
                        Tab, HBox, VBox, \
                        Dropdown, Button, Checkbox, \
                        Layout, Image, Output
-from mufit import MuFit as mufit
-import musr2py.musr2py as muload 
+from mujpy.mufit import MuFit as mufit
+import mujpy.musr2py.musr2py as muload 
 import numpy as np
 import matplotlib.pyplot as P
 import probfit as PF
 from iminuit import Minuit as M , describe, Struct
-from mucomponents.muprompt import muprompt # check
+from mujpy.mucomponents.muprompt import muprompt # check
+from mujpy import __file__ as MuJPyName
 # from collections import OrderedDict as dict
 
 # 1 Aug 2017 done
@@ -16,6 +17,7 @@ from mucomponents.muprompt import muprompt # check
 # to do [version]: 
 # write about [0.1]
 # downoad on git.hub [0.1]
+# ------------------- done the above
 # cythonize promptfit [0.1.1]
 # cythonize fit 
 # link fit tab methods to self.myfit 
@@ -47,6 +49,7 @@ class mugui(object):
          MuJPy = MG() # instance is MuJPy
          MuJPy.start()
         '''
+        import os
         self.interval = np.array([0,7800], dtype=int)
         self.binning = 1
 
@@ -65,7 +68,9 @@ class mugui(object):
         self.offset0 = 7 
         self.offset = [] # if self.offset: is False, to check whether the handle is created
         self.first_t0plot = True
-
+# paths
+        self.__path__ = os.path.dirname(MuJPyName)
+        self.__logopath__ = self.__path__+"logo/"
     def about(self):
         '''
         a few infos (version and authors)
@@ -194,8 +199,7 @@ class mugui(object):
          MuJPy = MG() # instance
          MuJPy.start() # launch several methods and this gui
         '''
-        self.logopath = "./logo/"
-        file = open(self.logopath+"logo.png", "rb")
+        file = open(self.__logopath__+"logo.png", "rb")
         image = file.read()
         logo = Image(value=image,format='png',width=132,height=132)
         self.title = Text(description='run title', value='none yet',layout=Layout(width='70%'),disable=True)

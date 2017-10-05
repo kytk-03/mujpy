@@ -1,3 +1,6 @@
-include README.rst
-include docs/*.rst
-include logo/logo.png
+include LICENSE README.rst
+recursive-include mujpy MuSR2py.cpp MuSR_td_PSI_bin.cpp MuSR_td_PSI_bin.h Makefile
+recursive-include docs *
+recursive-include mujpy logo.png
+recursive-include examples *
+
