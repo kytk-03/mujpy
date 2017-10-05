@@ -70,7 +70,7 @@ class mugui(object):
         self.first_t0plot = True
 # paths
         self.__path__ = os.path.dirname(MuJPyName)
-        self.__logopath__ = self.__path__+"logo/"
+        self.__logopath__ = os.path.join(self.__path__,"logo"
     def about(self):
         '''
         a few infos (version and authors)
@@ -199,7 +199,8 @@ class mugui(object):
          MuJPy = MG() # instance
          MuJPy.start() # launch several methods and this gui
         '''
-        file = open(self.__logopath__+"logo.png", "rb")
+        import os
+        file = open(os.path.join(self.__logopath__,"logo.png"), "rb")
         image = file.read()
         logo = Image(value=image,format='png',width=132,height=132)
         self.title = Text(description='run title', value='none yet',layout=Layout(width='70%'),disable=True)
