@@ -80,7 +80,7 @@ class mugui(object):
         self._version = 'MuJPy          version '+'0.1' # increment while progressing
         self._authors = '\n\n  Authors: Roberto De Renzi, Pietro Bonfà, '
         self._blahblah = '\n\n  A Python MuSR data analysis graphical interface.\n  Based on classes, designed for jupyter.\n  Released under the MIT licence'
-        self._pronounce = '\n  See docs in Pronounce it as mug + pie'
+        self._pronounce = '\n  See docs in ReadTheDocs\n  Pronounce it as mug + pie'
         self._about_text = self._version+self._blahblah+self._pronounce+self._authors
         self._about_area = Textarea(value=self._about_text,
                                    placeholder='Info on MuJPy',
@@ -775,7 +775,7 @@ class mugui(object):
 
         # fit_vbox = VBox(description='prompt Fit',layout=Layout(width='15%',right='5%')) 
         self.plot_check = Checkbox(description='prompt plot',value=True,layout=Layout(width='15%'))
-        self.plot_check.style.description_width='-70%'
+        self.plot_check.style.description_width='10%'
         fit_button = Button(description='prompt fit',layout=Layout(width='15%'))
         fit_button.on_click(on_prompt_fit_click)
         fit_button.style.button_color = 'lightgreen'
