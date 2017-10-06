@@ -10,6 +10,7 @@ import probfit as PF
 from iminuit import Minuit as M , describe, Struct
 from mujpy.mucomponents.muprompt import muprompt # check
 from mujpy import __file__ as MuJPyName
+import os
 # from collections import OrderedDict as dict
 
 # 1 Aug 2017 done
@@ -49,7 +50,6 @@ class mugui(object):
          MuJPy = MG() # instance is MuJPy
          MuJPy.start()
         '''
-        import os
         self.interval = np.array([0,7800], dtype=int)
         self.binning = 1
 
@@ -68,9 +68,11 @@ class mugui(object):
         self.offset0 = 7 
         self.offset = [] # if self.offset: is False, to check whether the handle is created
         self.first_t0plot = True
-# paths
+        # mujpy paths
         self.__path__ = os.path.dirname(MuJPyName)
         self.__logopath__ = os.path.join(self.__path__,"logo")
+        self.__startuppath__ = os.getcwd() # working directory, in which, in case, to find mujpy_setup.pkl 
+        
     def about(self):
         '''
         a few infos (version and authors)
@@ -199,7 +201,6 @@ class mugui(object):
          MuJPy = MG() # instance
          MuJPy.start() # launch several methods and this gui
         '''
-        import os
         file = open(os.path.join(self.__logopath__,"logo.png"), "rb")
         image = file.read()
         logo = Image(value=image,format='png',width=132,height=132)
@@ -457,13 +458,11 @@ class mugui(object):
         """
         import dill as pickle
 
-        path = self.paths[0].value + 'mujpy_setup.pkl'
-        with open(path,'rb') as f:
-            try:
+        path = os.path.join(self.__startuppath__,'mujpy_setup.pkl')
+        # print('loading {}, presently in {}'.format(path,os.getcwd()))
+        try:
+            with open(path,'rb') as f:
                 partial = pickle.load(f) 
-            except:
-                print('File {} not found'.format(path))
-            try:
 #        _paths_content = [ self.paths[k].value for k in range(3) ] # should be 3 ('data','tlag','analysis')
 #        _filespecs_content = [ self.filespecs[k].value for k in range(2) ] # should be 2 ('fileprefix','extension')
 #        _alpha = self.alpha.value # alpha is float
@@ -473,40 +472,34 @@ class mugui(object):
 #        _plot_range = [self.derange(scope='plot')[k] for k in range(2)] # changes to plot_range (derange('scope='plot') for plot_range)
 #        _prepostpk = [self.prepostpk[k].value for k in range(2)] # 'pre-prompt bin','post-prompt bin' len(bkg_content)
 #        _nt0 = self.nt0 # numpy array
-#        _dt0 = self.dt0 # numpy array 
-                for k in range(3):  # len(paths_contents)
-                    self.paths[k].value =  partial._paths_content[k] # should be 3 ('data','tlag','analysis')
-                for k in range(2):  # len(filespecs.content)
-                    self.filespecs[k].value = partial._filespecs_content[k] # should be 2 ('fileprefix','extension')
-                # warning: self.load_setup() is first invoked at the end of self.setup() 
-                #                                                    before self.fit() is called
-                #                                            hence self.alpha does not yet exist
-                if self.alpha:  # True if self.alpha is already created by self.fit()
-                    self.alpha.value = '{:.4f}'.format(partial._alpha) # self.alpha.value is a float
-                else:     # should be False if self.alpha = [], as set in self.__init__()
-                    self.alpha0 = partial._alpha # temporary parking
-                if self.offset:  # True if self.alpha is already created by self.fit()
-                    self.offset.value = partial._offset # self.offste.value is int
-                else:     # should be False if self.offset = [], as set in self.__init__()
-                    self.offset0 = partial._offset # temporary parking
-                self.grouping = partial._grouping # {'forward':np.array,'backward':np.array}
-                self.arrange(partial._fit_range) # change to fit_range plot_range
-                self.arrange(partial._plot_range,scope='plot') # change to fit_range plot_range
-                for k in range(2):  # len(bkg_content)
-                    self.prepostpk[k].value = partial._prepostpk[k] # 'pre-prompt bin','post-prompt bin' 
-                self.nt0 = partial._nt0 # bin of peak, nd.array of shape run.get_numberHisto_int()
-                self.dt0 = partial._dt0 # fraction of bin, nd.array of shape run.get_numberHisto_int()
-            except Exception as e:
-                print('parameters not found: {}'.format(e))
+#        _dt0 = self.dt0 # numpy array
+            for k in range(3):  # len(paths_contents)
+                self.paths[k].value =  partial._paths_content[k] # should be 3 ('data','tlag','analysis')
+            for k in range(2):  # len(filespecs.content)
+                self.filespecs[k].value = partial._filespecs_content[k] # should be 2 ('fileprefix','extension')
+            # warning: self.load_setup() is first invoked at the end of self.setup() 
+            #                                                    before self.fit() is called
+            #                                            hence self.alpha does not yet exist
+            if self.alpha:  # True if self.alpha is already created by self.fit()
+                self.alpha.value = '{:.4f}'.format(partial._alpha) # self.alpha.value is a float
+            else:     # should be False if self.alpha = [], as set in self.__init__()
+                self.alpha0 = partial._alpha # temporary parking
+            if self.offset:  # True if self.alpha is already created by self.fit()
+                self.offset.value = partial._offset # self.offste.value is int
+            else:     # should be False if self.offset = [], as set in self.__init__()
+                self.offset0 = partial._offset # temporary parking
+            self.grouping = partial._grouping # {'forward':np.array,'backward':np.array}
+            self.arrange(partial._fit_range) # change to fit_range plot_range
+            self.arrange(partial._plot_range,scope='plot') # change to fit_range plot_range
+            for k in range(2):  # len(bkg_content)
+                self.prepostpk[k].value = partial._prepostpk[k] # 'pre-prompt bin','post-prompt bin' 
+            self.nt0 = partial._nt0 # bin of peak, nd.array of shape run.get_numberHisto_int()
+            self.dt0 = partial._dt0 # fraction of bin, nd.array of shape run.get_numberHisto_int()
             if self.group:
-            # warning: first call òf set_grouping is invoked by self.load_setup() in self.setup() 
-            #                                            before self.fit() is constructed
-            #                                            hence self.group does not yet exist
-                try:
-                    self.set_grouping('forward')
-                    self.set_grouping('backward')
-                except Exception as e:
-                    print('set_grouping went wrong: {}'.format(e))
+                self.set_grouping('forward')
+                self.set_grouping('backward')
+        except:
+            print('File {} not found'.format(path))
 
 
     def promptfit(self, mplot = False, mprint = False):
@@ -624,11 +617,11 @@ class mugui(object):
         self.binrange[2].on_click(save_setup)  #  change to fit, plot range
         """
         import dill as pickle
-        path = self.paths[0].value + 'mujpy_setup.pkl'
+        path = os.path.join(self.__startuppath__, 'mujpy_setup.pkl')
         with open(path,'wb') as f:
             pickle.dump(self, f) 
         with self.out:
-            print('Saved {}mujpy_setup.pkl'.format(self.paths[0].value))
+            print('Saved {}mujpy_setup.pkl'.format(self.__startuppath__))
 
     def __getstate__(self):
         '''
@@ -696,7 +689,6 @@ class mugui(object):
         MuJPy.setup()
         for display see MuJPy.gui
         '''
-        import os
 
         def better_call_load(b):
              self.load_setup()
@@ -729,13 +721,13 @@ class mugui(object):
                         os.stat(prepath)
                         os.mkdir(dire+os.path.sep)
                         print ('Analysis path {} created'.format(directory))
-                        self.paths[k].value = dire+os.path.sep
+                        # self.paths[k].value = dire+os.path.sep # not needed if path is made with os.path.join 
                     except:
-                        self.paths[k].value = ''
+                        self.paths[k].value = os.path.curdir
                 else:
-                    self.paths[k].value = ''
-            elif directory.rindex(os.path.sep)!=len(directory)-1:
-                self.paths[k].value = directory + os.path.sep
+                    self.paths[k].value = os.path.curdir
+            # elif directory.rindex(os.path.sep)!=len(directory)-1: # not needed if path is made with os.path.join 
+            #    self.paths[k].value = directory + os.path.sep
  
         def on_prompt_fit_click(b):
             self.promptfit(mplot=self.plot_check.value) # mprint we leave always False
@@ -752,7 +744,7 @@ class mugui(object):
         paths_content = ['data','tlog','analysis'] # needs a VBox with three Label,Text blocks
         paths_box = VBox(description='paths',layout=Layout(width='60%'))
         self.paths = [Text(description=paths_content[k],layout=Layout(width='90%'),continuous_update=False) for k in range(len(paths_content))]
-        self.paths[0].value='.'+os.path.sep # start value, to be able to load a local mujpy_setup.pkl
+        # self.paths[k].value='.'+os.path.sep # initial value, 
         paths_box.children = self.paths
         for k in range(len(paths_content)):
             self.paths[k].observe(on_paths_changed,'value')
@@ -865,9 +857,9 @@ class mugui(object):
                 self.globalfit = False
                 myrun = muload.musr2py() # *** fix a better integration between classes, mugui, mufit, muset, musuite ***
                 path_and_filename = '' 
-                s = ''
-                path_and_filename = s.join([self.paths[0].value,self.filespecs[0].value,
-                                            muzeropad(self.loads_handles[0].value),'.',self.filespecs[1].value])
+                filename = ''
+                filename = filename.join([self.filespecs[0].value,muzeropad(self.loads_handles[0].value),'.',self.filespecs[1].value])
+                path_and_filename = os.path.join(self.paths[0].value,filename)
                                     # data path + filespec + padded run rumber + extension)
                 if myrun.read(path_and_filename) == 1: # error condition, set by musr2py.cpp
                     with self.out:
