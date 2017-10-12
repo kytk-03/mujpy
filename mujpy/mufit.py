@@ -1,7 +1,5 @@
 import numpy as np
-# import musuite
-# import muset
-from mujpy.mucomponents.mufcn import mufcn as fcn
+from mujpy.mucomponents.mucomponents import mumodel
 from scipy.constants import physical_constants as C
 import matplotlib.pyplot as P
 
@@ -21,7 +19,7 @@ class MuFit(object):                        # defines the python class
         self.TauPi_ns = 2.6033 # numbers are from Particle Data Group 2017
         self.gamma_Mu_MHzperT = 3.183345142*C['proton gyromag. ratio over 2 pi'][0]  # numbers are from Particle Data Group 2017
         self.gamma_e_MHzperT = C['electron gyromag. ratio over 2 pi'][0]
-        self.components = [] # becomes a list of directories
+        self.internal_components = [] # becomes a list of dictionaries
         self.model = '' # no model yet
 
         self.asymmetry = [] 
@@ -29,8 +27,11 @@ class MuFit(object):                        # defines the python class
         self.numberHisto = []
         self.histoLength = []
         self.fig_asym = []
-        self.available_components() # now use self.available_components as a list
-        self.models() # now use self.model as a list
+        self.available_components = mumodel()._available_components_() # import automagical template tuple
+        self.component_names = [self.available_components[i]['name'] for i in range(len(self.available_components))]
+        # these are just the names of the available_components
+
+        # WARNING! compatibility checks: the tuple has changed, stepbounds now separate error and limits
 
     def addcomponent(self, name):
         '''
@@ -39,40 +40,26 @@ class MuFit(object):                        # defines the python class
         this method adds a component selected from the available_component tuple of directories
         with zeroed values, stepbounds from available_components, flags set to '~' and empty functions
         '''
-        if name in self.models:
-            npar = self.available_components[self.models.index(name)]['npar']
-            pars = self.available_components[self.models.index(name)]['par'] # list of dictionaries for the parameters
+        if name in self.component_names:
+            npar = len(self.available_components[self.component_names.index(name)]['pars']) # number of pars
+            pars = self.available_components[self.component_names.index(name)]['par'] # list of dictionaries for the parameters
+            # e.g {'name':'asymmetry','error',0.01,'limits',[0, 0]}
             for k in range(npar):
                 pars[k].update({'value':0.0})
                 pars[k].update({'flag':'~'})
-                pars[k].update({'function':''}) # adds these three keys to each par dict
-            self.components.append({'name':name,'npar':npar,'par':pars})
+                pars[k].update({'function':''}) # adds these three keys to each pars dict
+                # they serve to collect values in mugui
+            self.internal_components.append({'name':name,'par':pars})
             return True # OK code
         else:
             print ('Warning: '+name+' is not a known component. Not added.\n'+
                    'With myfit = mufit(), type myfit.help to see the available components')
             return False # error code
 
-    def addmodel(self, name):
-        '''
-        myfit = MuFit()       
-        myfit.addmodel('daml') # adds e.g. the two component 'da' 'ml' model
-        this method adds a model of components selected from the available_component tuple of directories
-        with zeroed values, stepbounds from available_components, flags set to '~' and empty functions
-        '''
-        components = self.checkvalidmodel(name)
-        if components: # exoloits the fact that [] is False and ['da'] is true
-            self.model = name
-            for component in components:
-                self.addcomponent(component)
-            return True
-        else:
-            return False
-
     def asymmetry(self,run):
         """
         myfit.setup(mset,msuite) # after initialization calls (see MuFit.setup)
-        myfit.addmodel('daml') # e.g. for an alpha calibration run
+        myfit.create_model('daml') # e.g. for an alpha calibration run
         myfit.asymmetry(run) # run is a murs2py instance read from a data file
         #     mset, msuite are a muset and musuite instance, respectively check
         checks if this is the first run by previous_binWidth_ns
@@ -150,37 +137,6 @@ class MuFit(object):                        # defines the python class
             self.nrun.append(run.get_runNumber_int())  # this is a list
         return 0 # no error
 
-    def available_components(self):
-        '''
-        definition of the recognignized model components (invoked by __init__)
-        the tuple contains one dictionary per component, each formed by
-        'name', the 2-character name of the component
-        'npar', its number of parameters, hereafter p[0]...p[npar-1]
-        'par', a dictionary for each parameter,  with 
-                'name', its name, 
-                'stepbounds', a numpy array with step, lower bound, upper bound ([0.,0.,0.] means unbounded, step as 0.01*value)
-        'help', a latex string, r'$...$', to be output by matplotlib in mufit.help
-        '''
-        self.available_components =({'name':'da','npar':1,'par':[{'name':'dalpha','stepbounds':[0.,0.,0.]}],
-                                     'help':r'linear $f$ correction: $\frac{2\alpha-p[0](1-f)}{2\alpha+p[0](1-f)}$'},
-                                    {'name':'bl','npar':2,'par':[{'name':'blAsym','stepbounds':[0.,0.,0.]},
-                                                                {'name':'blDelo','stepbounds':[0.,0.,0.]}],
-                                     'help':r'Lorenz decay: $p[0]\exp(-p[1]t)$'},
-                                    {'name':'bg','npar':2,'par':[{'name':'bgAsym','stepbounds':[0.,0.,0.]},
-                                                                {'name':'muSigm','stepbounds':[0.,0.,0.]}],
-                                     'help':r'Gauss decay: $p[0]\exp(-(p[1]t)^2)/2$'},
-                                    {'name':'ml','npar':4,'par':[{'name':'mlAsym','stepbounds':[0.,0.,0.]},
-                                                                {'name':'mlBGau','stepbounds':[0.,0.,0.]},
-                                                                {'name':'mlPhiD','stepbounds':[0.,0.,0.]},
-                                                                {'name':'mlDelo','stepbounds':[0.,0.,0.]}],
-                                     'help':r'Lorenz decay cosine: $p[0]\exp(-p[3]t)\cos(2\pi(\gamma_\mu p[1] + p[2]/180.))$'},
-                                    {'name':'mg','npar':3,'par':[{'name':'mgAsym','stepbounds':[0.,0.,0.]},
-                                                                {'name':'mgBGau','stepbounds':[0.,0.,0.]},
-                                                                {'name':'mgPhiD','stepbounds':[0.,0.,0.]},
-                                                                {'name':'mgSigm','stepbounds':[0.,0.,0.]}],
-                                     'help':r'Gauss decay cosine: $p[0]\exp(-(p[3]t)^2/2)\cos(2\pi(\gamma_\mu p[1] + p[2]/180.))$'}
-                                    )
-
     def checkvalidmodel(self,name):
         '''
         checkvalidmodel(name) checks that name is a 
@@ -189,7 +145,7 @@ class MuFit(object):                        # defines the python class
         '''
         components = [name[i:i+2] for i in range(0, len(name), 2)]
         for component in components:            
-            if component not in self.models:
+            if component not in self.component_names:
                 print ('Warning: '+component+' is not a known component. Not added.\n'+
                        'With myfit = mufit(), type myfit.help to see the available components')
                 return [] # error code
@@ -205,15 +161,29 @@ class MuFit(object):                        # defines the python class
         # implement as hidden accordion to clear, select one, get a message warning msg in output saying click again if you really want to delete
         del self.numberHisto, self.histoLength, self.firstrun, self.binwidth_ns, self.time, self.asymmetry, self.asymerror
           
+    def create_model(self, name):
+        '''
+        myfit = MuFit()       
+        myfit.create_model('daml') # adds e.g. the two component 'da' 'ml' model
+        this method adds a model of components selected from the available_component tuple of directories
+        with zeroed values, stepbounds from available_components, flags set to '~' and empty functions
+        '''
+        components = self.checkvalidmodel(name)
+        if components: # exploits the fact that [] is False and ['da'] is true
+            self.model = name
+            for component in components:
+                self.addcomponent(component)
+            return True
+        else:
+            return False
 
-
-    def deletemodel(self):
+    def delete_model(self):
         '''
         myfit = MuFit.()
         myfit.deletemodel() 
         this method resets components to an empty list        
         '''
-        self.components=[]
+        self.internal_components=[]
         self.model = ''
 
     def help(self):
@@ -236,13 +206,6 @@ class MuFit(object):                        # defines the python class
         """
         with open(path,'rb') as f:
             self.__dict__.update(pickle.load(f).__dict__)
-
-    def models(self):
-        '''
-        myfit = MuFit()
-        myfit.models() # extracts the available model names 
-        '''
-        self.models = [self.available_components[i]['name'] for i in range(len(self.available_components))]
 
     def plot_limits(self, plot_init = 0, plot_last = 10000. ):
          self.plt_ini = plot_init

@@ -526,7 +526,7 @@ class mugui(object):
             x = np.arange(0,nbin,dtype=int) # nbin bins from 0 to nbin-1
             self.lastbin, np3s = npeaks - self.prepostpk[0].value, npeaks + self.prepostpk[1].value # final bin of first and 
                                                                                                 # initial bin of second plateaus
-            mm = np.vectorize(muprompt)
+#            mm = np.vectorize(muprompt)
 
             if mplot and self.first_t0plot:
                 with self.t0plot_container:
@@ -536,7 +536,7 @@ class mugui(object):
             x0 = np.zeros(self.run.get_numberHisto_int())
             if self.first_t0plot:
                 self.prompt_fit_text = [None]*self.run.get_numberHisto_int()
-#            print(describe(muprompt))
+#               print(describe(muprompt))
             for detector in range(self.run.get_numberHisto_int()):
                 # prepare for muprompt fit
                 histo = self.run.get_histo_array_int(detector)
@@ -546,10 +546,12 @@ class mugui(object):
                 y = histo[:nbin]
                 pars = dict(a=p[0],error_a=p[0]/100,x0=p[1]+0.1,error_x0=p[1]/100,dx=1.1,error_dx=0.01,
                             ak1=p[3],error_ak1=p[3]/100,ak2=p[4],error_ak2=p[4]/100)
-                chi2 = PF.Chi2Regression(muprompt,x,y)
+#                chi2 = PF.Chi2Regression(muprompt,x,y)
 #                print(describe(chi2))
                 level = 1 if mprint else 0
-                m = M(chi2,pedantic=False,print_level=level,**pars)
+                mm = muprompt()
+                mm._init_(x,y)
+                m = M(mm,pedantic=False,print_level=level,**pars)
                 m.migrad()
                 A,X0,Dx,Ak1,Ak2 = m.args
                 x0[detector] = X0 # store float peak bin position (fractional) 
@@ -561,14 +563,14 @@ class mugui(object):
                     with self.t0plot_container:
                         if self.first_t0plot:
                             self.axt0[divmod(detector,3)].plot(x[n1:n2],y[n1:n2],'.')
-                            self.axt0[divmod(detector,3)].plot(x3,mm(x3,A,X0,Dx,Ak1,Ak2))
+                            self.axt0[divmod(detector,3)].plot(x3,mm.f(x3,A,X0,Dx,Ak1,Ak2))
                             self.prompt_fit_text[detector] = self.axt0[divmod(detector,3)].text(npeaks[detector]
                                                              +10,0.8*max(y),'Det #{}'.format(detector+1))
                             #self.axt0[divmod(detector,3)].text(n1+5,0.8*max(y),'X0={:.2f}ns'.format(X0))
                             #self.axt0[divmod(detector,3)].text(n1+5,0.6*max(y),'Dx={:.2f}ns'.format(Dx))
                         else:
                             self.axt0[divmod(detector,3)].lines[0].set_ydata(y[n1:n2])
-                            self.axt0[divmod(detector,3)].lines[1].set_ydata(mm(x3,A,X0,Dx,Ak1,Ak2))
+                            self.axt0[divmod(detector,3)].lines[1].set_ydata(mm.f(x3,A,X0,Dx,Ak1,Ak2))
                             x_text = self.prompt_fit_text[detector].get_position()[0]
                             self.prompt_fit_text[detector].set_position((x_text,0.8*max(y)))
                             self.axt0[divmod(detector,3)].relim() # find new dataLim
