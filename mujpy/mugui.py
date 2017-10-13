@@ -1,12 +1,7 @@
-from ipywidgets import Text, IntText, FloatText, Textarea, Label, \
-                       Tab, HBox, VBox, \
-                       Dropdown, Button, Checkbox, \
-                       Layout, Image, Output
 from mujpy.mufit import MuFit as mufit
 import mujpy.musr2py.musr2py as muload 
 import numpy as np
 import matplotlib.pyplot as P
-import probfit as PF
 from iminuit import Minuit as M , describe, Struct
 from mujpy.mucomponents.muprompt import muprompt # check
 from mujpy import __file__ as MuJPyName
@@ -77,6 +72,8 @@ class mugui(object):
         '''
         a few infos (version and authors)
         '''
+        from ipywidgets import Textarea, Layout
+
         self._version = 'MuJPy          version '+'0.1' # increment while progressing
         self._authors = '\n\n  Authors: Roberto De Renzi, Pietro Bonfà, '
         self._blahblah = '\n\n  A Python MuSR data analysis graphical interface.\n  Based on classes, designed for jupyter.\n  Released under the MIT licence'
@@ -201,6 +198,8 @@ class mugui(object):
          MuJPy = MG() # instance
          MuJPy.start() # launch several methods and this gui
         '''
+        from ipywidgets import Image, Text, Layout, HBox, Output, VBox, Tab
+                        
         file = open(os.path.join(self.__logopath__,"logo.png"), "rb")
         image = file.read()
         logo = Image(value=image,format='png',width=132,height=132)
@@ -269,6 +268,19 @@ class mugui(object):
                 valid = False
             return valid
 
+        def on_fit_request(b):
+            '''
+            collect all values: parameters values, flags, errors, limits, functions, alpha, fit_range
+            pass them to myfit
+            construct _int (see mumodel)
+            mumodel-_load_data_
+            call minuit
+            save values in myfit
+            save 
+            print summary
+            '''
+            _int
+
         def on_flag_changed(change):
             '''
             observe response of fit tab widgets:
@@ -316,6 +328,19 @@ class mugui(object):
             else:
                 loadmodel.value=''
 
+        def on_parvalue_changed(change):
+            '''
+            observe response of fit tab widgets:
+            check for validity of function syntax
+            '''
+            dscr = change['owner'].description # description is three chars ('val','fun','flg') followed by an integer nint
+                                               # iterable in range(ntot), total number of internal parameters
+            n = int(dscr[5:]) # description='value'+str(nint), skip 'func'
+            try:
+                float(parvalue[n].value)
+            except:
+                parvalue[n].value = '' 
+  
         def on_range(change):
             '''
             observe response of fit range widgets:
@@ -328,8 +353,10 @@ class mugui(object):
                exec('self.'+name+'.value = ""') # reset to expty text
 
         ######### here starts the fit method of MuGui
+        from ipywidgets import FloatText, Text, IntText, Layout, Button, HBox, \
+                               Checkbox, VBox, Dropdown
 
-        myfit = mufit()  # this is the official instance of mufit inside mugui
+        myfit = mufit()  # this is the official instance of mufit inside mugui, should it be a self. ?
         # myfit.deletemodel() # this isn't really needed, because mufit is initialized bare of model
 
 # moved from setup
@@ -358,6 +385,7 @@ class mugui(object):
         version.style.description_width='43%'
         fit_button = Button (description='Fit',layout=Layout(width='10%'))
         fit_button.style.button_color = 'lightgreen'
+        fit_button.on_click(on_fit_request)
         self.fit_range = Text(description='ft range',value='0,10000',layout=Layout(width='15%'),continuous_update=False)
         self.fit_range.style.description_width='35%'
         self.fit_range.observe(on_range,'value')
@@ -384,46 +412,46 @@ class mugui(object):
 
         bottomframe_handle = HBox(description = 'Components', layout=Layout(width='100%',border='solid')) #
 
-        myfit.addmodel(model.value)
+        myfit.create_model(model.value)
 
         leftframe_list, rightframe_list = [],[]
   
         words  = ['#','name','value','~!=','function']
         nint = -1 # internal parameter count, each widget its unique name
-        ntot = np.array([myfit.components[k]['npar'] for k in range(len(myfit.components))]).sum()
+        ntot = np.array([len(myfit.internal_components[k]['pars']) for k in range(len(myfit.internal_components))]).sum()
         parvalue, flag, function = [], [], [] # lists, index runs according to internal parameter count nint
         cp = {} # dictionary: key nint corresponds to a list of two values, c (int index of component) and p (int index of parameter)
                 # use: cp[nint] is a list of two integers, the component index k and its parameter index j
 
-        for k in range(len(myfit.components)):  # scan the model            
-            header = HBox([ Text(value=myfit.components[k]['name'],disabled=True,layout=Layout(width='8%')),
+        for k in range(len(myfit.internal_components)):  # scan the model            
+            header = HBox([ Text(value=myfit.internal_components[k]['name'],disabled=True,layout=Layout(width='8%')),
                            Checkbox(description='FFT',value=True) ]) # list of HBoxes, the first is the header for the component
                                                                      # composed of the name (e.g. 'da') and the FFT flag
                                                                      # fft will be applied to a 'residue' where only checked components
                                                                      # are subtracted
             componentframe_list = [header] # list of HBoxes, header and pars
             componentframe_handle = VBox()
-            for j in range(myfit.components[k]['npar']): # make a new par for each parameter and append it to component_frame_content
+            for j in range(len(myfit.internal_components[k]['pars'])): # make a new par for each parameter and append it to component_frame_content
                 nint += 1      # all parameters are internal parameters, first is pythonically zero 
                 cp.update({nint:[k,j]}) # stores the correspondence between nint and component,parameter
                 nintlabel_handle = Text(value=str(nint),layout=Layout(width='10%'),disabled=True)
-                parname_handle = Text(value=myfit.components[k]['par'][j]['name'],layout=Layout(width='15%'),disabled=True)
+                parname_handle = Text(value=myfit.internal_components[k]['pars'][j]['name'],layout=Layout(width='15%'),disabled=True)
                 # parname can be overwritten, not important to store
 
-                parvalue.append(Text(value='{:.4}'.format(myfit.components[k]['par'][j]['value']),
+                parvalue.append(Text(value='{:.4}'.format(myfit.internal_components[k]['pars'][j]['value']),
                                      layout=Layout(width='20%'),description='value'+str(nint),continuous_update=False))
                 parvalue[nint].style.description_width='0%'
                 # parvalue handle must be unique and stored at position nint, it will provide the initial guess for the fit
 
-                function.append(Text(value=myfit.components[k]['par'][j]['function'],
+                function.append(Text(value=myfit.internal_components[k]['pars'][j]['function'],
                                      layout=Layout(width='38%'),description='func'+str(nint),continuous_update=False))
                 function[nint].style.description_width='0%'
                 # function handle must be unique and stored at position nint, it will provide (eventually) the nonlinear relation 
 
-                fdis = False if myfit.components[k]['par'][j]['flag']=='=' else True 
+                fdis = False if myfit.internal_components[k]['pars'][j]['flag']=='=' else True 
                 function[nint].disabled = fdis # enabled only if flag='='
                 flag.append(Dropdown(options=['~','!','='], 
-                                     value=myfit.components[k]['par'][j]['flag'],
+                                     value=myfit.internal_components[k]['pars'][j]['flag'],
                                      layout=Layout(width='10%'),description='flag'+str(nint)))
                 flag[nint].style.description_width='0%'
                 # flag handle must be unique and stored at position nint, it will provide (eventually) the nonlinear relation to be evaluated
@@ -432,7 +460,8 @@ class mugui(object):
                 par_handle = HBox([nintlabel_handle, parname_handle, parvalue[nint], flag[nint], function[nint]])
                            # handle to an HBox of a list of handles; notice that parvalue, flag and function are lists of handles
                 
-                # now make flag and function active 
+                # now make value flag and function active 
+                parvalue[nint].observe(on_parvalue_changed,'value')
                 flag[nint].observe(on_flag_changed,'value') # when flag[nint] is modified, function[nint] is z(de)activated
                 function[nint].observe(on_function_changed,'value') # when function[nint] is modified, it is validated
 
@@ -546,8 +575,6 @@ class mugui(object):
                 y = histo[:nbin]
                 pars = dict(a=p[0],error_a=p[0]/100,x0=p[1]+0.1,error_x0=p[1]/100,dx=1.1,error_dx=0.01,
                             ak1=p[3],error_ak1=p[3]/100,ak2=p[4],error_ak2=p[4]/100)
-#                chi2 = PF.Chi2Regression(muprompt,x,y)
-#                print(describe(chi2))
                 level = 1 if mprint else 0
                 mm = muprompt()
                 mm._init_(x,y)
@@ -734,6 +761,8 @@ class mugui(object):
         def on_prompt_fit_click(b):
             self.promptfit(mplot=self.plot_check.value) # mprint we leave always False
 
+        from ipywidgets import HBox, Layout, VBox, Text, IntText, Checkbox, Button, Output
+
         # first tab: setup for things that have to be set initially (paths, t0, etc.)
         # the tab is self.mainwindow.children[0], a VBox 
         # containing a setup_box of three HBoxes: path, and t0plot 
@@ -743,7 +772,7 @@ class mugui(object):
         setup_hbox = [HBox(description=name,layout=Layout(border='solid',)) for name in setup_contents]
         self.mainwindow.children[0].children = setup_hbox # first tab (setup)
         # first path
-        paths_content = ['data','tlog','analysis'] # needs a VBox with three Label,Text blocks
+        paths_content = ['data','tlog','analysis'] # needs a VBox with three Text blocks
         paths_box = VBox(description='paths',layout=Layout(width='60%'))
         self.paths = [Text(description=paths_content[k],layout=Layout(width='90%'),continuous_update=False) for k in range(len(paths_content))]
         # self.paths[k].value='.'+os.path.sep # initial value, 
@@ -761,30 +790,17 @@ class mugui(object):
 
         # paths finished
         # now agt0
-        # agt0_hbox = [HBox(description='AgT0',layout=Layout(border='solid'))]
-        # the ag part is a VBox with alpha and group
-
-# keep here
-        # bkg_content = ['pre-prompt bin','post-prompt bin']
-        # bkg_vbox = VBox(description='Bkg',layout=Layout(width='33%',right='7%'))
         self.prepostpk = [IntText(description='prepeak',value = 7, layout=Layout(width='20%'),
                               continuous_update=False), 
                           IntText(description='postpeak',value = 7, layout=Layout(width='20%'),
                               continuous_update=False)]
         self.prepostpk[0].style.description_width='60%'
         self.prepostpk[1].style.description_width='60%'
-        # bkg_vbox.children = self.prepostpk # list of pre-prompt bin, post.prompt bin, their label
-
-        # fit_vbox = VBox(description='prompt Fit',layout=Layout(width='15%',right='5%')) 
         self.plot_check = Checkbox(description='prompt plot',value=True,layout=Layout(width='15%'))
         self.plot_check.style.description_width='10%'
         fit_button = Button(description='prompt fit',layout=Layout(width='15%'))
         fit_button.on_click(on_prompt_fit_click)
         fit_button.style.button_color = 'lightgreen'
-        # fit_vbox_list = [fit_button, self.plot_check]#,layout=Layout(width='90%',left='8%'))
-        # fit_vbox_list[1].style.description_width='10%'
-        # fit_vbox_list.insert(0,Label(value='fix t0=0',layout=Layout(width='50%',left='45%')))
-        # fit_vbox.children = fit_vbox_list
 
         save_button = Button(description='save setup',layout=Layout(width='15%'))
         save_button.style.button_color = 'lightgreen'
@@ -801,7 +817,6 @@ class mugui(object):
 
 
         setup_hbox[0].children = [paths_box, filespecs_box]
-# move [1] to fit and renumber setup_box!
         setup_hbox[1].children = prompt_fit
         setup_hbox[2].children = [self.t0plot_container,self.t0plot_results]
         self.load_setup()
@@ -886,6 +901,7 @@ class mugui(object):
                 self.globalfit = True
                 print('to be implemented ...')
              
+        from ipywidgets import HBox, Layout, Text, Button
 
         # second tab: select run or suite of runs (for sequential or global fits)
         # the tab is self.mainwindow.children[1], a VBox 

@@ -19,7 +19,6 @@ setup(name='mujpy',
             'numpy >= 1.6',
             'ipywidgets >= 7.0',
             'iminuit >= 1.2',
-            'probfit',
             'matplotlib >= 2.0'
       ],
 #      test_suite="",

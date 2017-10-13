@@ -3,93 +3,83 @@ import numpy as np
 from scipy.special import dawsn,erf, j0
 
 class mumodel(object):
-    def _init_(self,x,y,e=1):
-        ''' generic __init__ for all mufunction classes
-        x, y, e are numpy arrays
-        e is always defined, 
-        either provided by the caller 
-        or default to np.ones(x.shape[0])
+    def __init__(self):
+        ''' 
+        defines few constants and _help_ dictionary
         '''
-        if x.shape[0]!=y.shape[0]:
-            raise ValueError('x, y have different lengths')
-        else:
-            self.x = x
-            self.y = y
-        if e==1:
-            self.e = np.ones(x.shape[0])
-        else:
-            if e.shape[0]!=x.shape[0]:
-                raise ValueError('x, e have different lengths')           
-            else:
-                self.e = e
-        self.radeg = pi/180.
-        self.gamma_mu = 135.5
-        self._help_={'bl':r'Lorentz decay: $\mbox{asymmetry}\exp(-\mbox{Lor_rate}t)$',
+        self._radeg_ = pi/180.
+        self._gamma_mu_ = 135.5
+        self._help_ = {'bl':r'Lorentz decay: $\mbox{asymmetry}\exp(-\mbox{Lor_rate}t)$',
                      'bg':r'Gauss decay: $\mbox{asymmetry}\exp(-0.5(\mbox{Gau_rate}t)^2)$',
                      'bs':r'Gauss decay: $\mbox{asymmetry}\exp(-0.5(\mbox{rate}t)^\beta)$',
+                     'da':r'Linearized dalpha correction: $f = \frac{2f_0(1+\alpha/\mbox{dalpha})-1}{1-f_0+2\alpha/dalpha}$',
                      'mg':r'Gauss decay: $\mbox{asymmetry}\cos[2\pi(\gamma_\mu \mbox{field} t +\mbox{phase}/360)]\exp(-0.5(\mbox{Gau_rate}t)^2)$',
                      'ml':r'Gauss decay: $\mbox{asymmetry}\cos[2\pi(\gamma_\mu \mbox{field} t +\mbox{phase}/360)]\exp(-\mbox{Lor_rate}t)$',
                      'ms':r'Gauss decay: $\mbox{asymmetry}\cos[2\pi(\gamma_\mu \mbox{field} t +\mbox{phase}/360)]\exp(-(\mbox{rate}t)^\beta)$',
                      'jg':r'Gauss Bessel: $\mbox{asymmetry} j_0[2\pi(\gamma_\mu \mbox{field} t +\mbox{phase}/360)]\exp(-0.5(\mbox{Lor_rate}t)^2)$',
                      'jl':r'Lorentz Bessel: $\mbox{asymmetry}j_0[2\pi(\gamma_\mu \mbox{field} t +\mbox{phase}/360)]\exp(-0.5(\mbox{Lor_rate}t)^2)$',
-                     'fm':r'FMuF: $\mbox{asymmetry}/6[3+\cos 2*\pi\gamma_\mu\mbox{dipfield}\sqrt{3} t +
-               (1-1/\sqrt{3})\cos \pi\gamma_\mu\mbox{dipfield}(3-\sqrt{3})t +
-               (1+1/\sqrt{3})\cos\pi\gamma_\mu\mbox{dipfield}(3+\sqrt{3})t ]\exp(-\mbox{Lor_rate}t)$',
-                     'kg':r'Gauss Kubo-Toyabe: $\mbox{asymmetry}\exp(-0.5(\mbox{Gau_rate}t)^2)$',
+                     'fm':r'FMuF: $\mbox{asymmetry}/6[3+\cos 2*\pi\gamma_\mu\mbox{dipfield}\sqrt{3} t + \
+               (1-1/\sqrt{3})\cos \pi\gamma_\mu\mbox{dipfield}(3-\sqrt{3})t + \
+               (1+1/\sqrt{3})\cos\pi\gamma_\mu\mbox{dipfield}(3+\sqrt{3})t ]\exp(-\mbox{Lor_rate}t)$', 
+                     'kg':r'Gauss Kubo-Toyabe: static and dynamic, in zero or longitudinal field by G. Allodi [Phys Scr 89, 115201]'}
+
+    def _load_data_(self,x,y,_int,_alpha,e=1):
+        ''' 
+        Must be called before activating _chisquare_
+        x, y, e are numpy arrays
+        e is always defined, 
+        either provided by the caller 
+        or default to np.ones(x.shape[0])
+        _int is a compact model list
+        _alpha is ditto
+        '''
+        if x.shape[0]!=y.shape[0]:
+            raise ValueError('x, y have different lengths')
+        else:
+            self._x_ = x
+            self._y_ = y
+            self._alpha_ = _alpha
+            self._int = _int
+        if e==1:
+            self._e_ = np.ones(x.shape[0])
+        else:
+            if e.shape[0]!=x.shape[0]:
+                raise ValueError('x, e have different lengths')           
+            else:
+                self._e_ = e
 
     # ---- end generic __init__
-    def _available_components_(self):
-        from iminuit import describe
-        '''
-        Returns a template tuple of dictionaries (one per fit component):
-        Each dictionary contains 'name' and 'pars', 
-        the latter in turns is a list of dictionaries, one per parameter, 'name','error,'limits'
-        ({'name':'bl','pars':[{'name':'asymmetry','error':0.01,'limits'[0,0]},
-                              {'name':'Lor_rate','error':0.01,'limits'[0,0]}}, 
-         ...)
-        retreived magically from the class.
-        Used in mufit.MuFit as 
-           from mujpy.mucomponent.mucomponent import mumodel
-           self.available_components = mumodel()._available_components_()         
-        '''
-        _available_components = [] # is a list, mutable
-        # generates a template of available components.
-        for name in [module for module in dir(self) if module[0]!='_']: # magical extraction of component names
-            pars = describe(self.__class__.__dict__[name])[2:]            # the [2:] is because the first two arguments are self and x
-            _pars = []
-            # print('pars are {}'.format(pars))
-            for parname in pars:
-            # The style is like iminuit fitargs, but not exactly,
-            # since the latter is a minuit instance:
-            # it will contain parameter name: parname+str(k)[+'_'+str(nrun)]
-            # error_parname, fix_parname (False/True), limits_parname, e.g.
-            #   {'amplitude1_354':0.154,'error_amplitude1_354':0.01,'fix_amplitude1_354':False,'limits_amplitude1_354':[0, 0]
-            # 
-            # In this template only
-            #   {'name':'amplitude','error':0.01,'limits':[0, 0]}
-                error, limits = 0.01, [0, 0] # defaults
-                if parname == 'field' or parname == 'phase' or parname == 'dipfield': error = 1.0
-                if parname == 'beta': error,limits = 0.05, [1.e-2, 1.e2]
-                # add here special cases for errors and limits, e.g. positive defined parameters
-                _pars.append({'name':parname,'error':error,'limits':limits})
-            _available_components.append({'name':name,'pars':_pars})
-        return tuple(_available_components) # transformed in tuple, immutable
 
-    def _add_(self,x,**kwargv):
+    def _add_(self,x,*argv):
         '''
         used by self._chisquare_ 
-        kwargs is a dictionary of dictionaries
-        use to plot e.g. a blmg model: 
-          m=mumodel() 
-          m._init_(x,y,e) 
-          plt.errorbar(m.x,m.y,yerr=m.e)
-          plt.plot(m.x,m._add_(m.x,**{'c1':{m.bl:[asy1,rate1]},'c2':{m.mg:[asy2,fld2,ph2,rate2]}})                    
-        'c1','c2' are unique but dummy
+        e.g. a blmg model with 
+        argv will be a tuple of parameter values (val1,val2.val3,val4,val5,val6) at this iteration 
+        _add_ reconstructs how to distribute these parameter values
+        use to plot : 
+          plt.errorbar(x,y,yerr=e)
+          plt.plot(x,mumodel()._add_(x,val1,val2.val3,val4,val5,val6)                    
         '''  
-        f = np.zeros(x.shape[0])
-        for num, dic in kwargv.items():
-            for component, parameters in dic.items():
-                f += component(x,*parameters)
+        _da_flag_ = False
+        f = np.zeros(x.shape[0])   
+        p = argv
+        k = -1
+        for component,parkeys in self._int:   # this allows only for single run fits       
+            p_comp = []
+            for key in parkeys:
+                if key == '~':
+                    k += 1
+                    p_comp.append(p[k])
+                else:
+                    p_comp.append(eval(key[1:]))
+            if component == self.da:
+                _da_Flag = True
+                da = p_comp[0]
+            else:
+                f += component(x,*p_comp)
+        if _da_Flag:
+            dada = da/self._alpha_
+            f = ((2.+dada)*f-dada)/((2.+dada)-dada*f) # linearized correction 
         return f     
 
     def bl(self,x,asymmetry,Lor_rate): 
@@ -113,48 +103,56 @@ class mumodel(object):
         '''
         return asymmetry*exp(-(x*rate)**beta)
 
+    def da(self,x,dalpha):
+        '''
+        fit component for linearized alpha correction
+        x [mus], dalpha
+        '''
+        # the returned value will not be used, correction in _add_
+        return x*dalpha
+
     def ml(self,x,asymmetry,field,phase,Lor_rate): 
         '''
         fit component for a precessing muon with Lorentzian decay, 
         x [mus], asymmetry, field [T], phase [degrees], Lor_rate [mus-1]
         '''
-        return asymmetry*cos(2*pi*self.gamma_mu*field*x+phase*self.radeg)*exp(-x*Lor_rate)
+        return asymmetry*cos(2*pi*self-_gamma_mu_*field*x+phase*self-_radeg_)*exp(-x*Lor_rate)
 
     def mg(self,x,asymmetry,field,phase,Gau_rate): 
         '''
         fit component for a precessing muon with Gaussian decay, 
         x [mus], asymmetry, field [T], phase [degrees], Gau_rate [mus-1]
         '''
-        return asymmetry*cos(2*pi*self.gamma_mu*field*x+phase*self.radeg)*exp(-0.5*(x*Gau_rate)**2)
+        return asymmetry*cos(2*pi*self-_gamma_mu_*field*x+phase*self-_radeg_)*exp(-0.5*(x*Gau_rate)**2)
 
     def ms(self,x,asymmetry,field,phase,rate,beta): 
         '''
         fit component for a precessing muon with stretched decay, 
         x [mus], asymmetry, field [T], phase [degrees], rate [mus-1], beta (>0)
         '''
-        return asymmetry*cos(2*pi*self.gamma_mu*field*x+phase*self.radeg)*exp(-(x*rate)**beta)
+        return asymmetry*cos(2*pi*self-_gamma_mu_*field*x+phase*self-_radeg_)*exp(-(x*rate)**beta)
 
     def fm(self,x,asymmetry,dipfield,Lor_rate):
         '''
         fit component for FmuF (powder average)
         '''
-        return asymmetry/6.0*( 3.+cos(2*pi*self.gamma_mu*dipfield*sqrt(3.)*x)+
-               (1.-1./sqrt(3.))*cos(pi*self.gamma_mu*dipfield*(3.-sqrt(3.))*x)+
-               (1.+1./sqrt(3.))*cos(pi*self.gamma_mu*dipfield*(3.+sqrt(3.))*x) )*exp(-x*Lor_rate)
+        return asymmetry/6.0*( 3.+cos(2*pi*self-_gamma_mu_*dipfield*sqrt(3.)*x)+
+               (1.-1./sqrt(3.))*cos(pi*self-_gamma_mu_*dipfield*(3.-sqrt(3.))*x)+
+               (1.+1./sqrt(3.))*cos(pi*self-_gamma_mu_*dipfield*(3.+sqrt(3.))*x) )*exp(-x*Lor_rate)
 
     def jl(self,x,asymmetry,field,phase,Lor_rate): 
         '''
         fit component for a Bessel j0 precessing muon with Lorentzian decay, 
         x [mus], asymmetry, field [T], phase [degrees], Lor_rate [mus-1]
         '''
-        return asymmetry*j0(2*pi*self.gamma_mu*field*x+phase*self.radeg)*exp(-x*Lor_rate)
+        return asymmetry*j0(2*pi*self-_gamma_mu_*field*x+phase*self-_radeg_)*exp(-x*Lor_rate)
 
     def jg(self,x,asymmetry,field,phase,Gau_rate): 
         '''
         fit component for a Bessel j0 precessing muon with Lorentzian decay, 
         x [mus], asymmetry, field [T], phase [degrees], Lor_rate [mus-1]
         '''
-        return asymmetry*j0(2*pi*self.gamma_mu*field*x+phase*self.radeg)*exp(-0.5*(x*Gau_rate)**2)
+        return asymmetry*j0(2*pi*self-_gamma_mu_*field*x+phase*self-_radeg_)*exp(-0.5*(x*Gau_rate)**2)
 
     def _kg(self,x,w,Gau_delta):
         '''
@@ -215,7 +213,7 @@ class mumodel(object):
         x [mus], asymmetry, L_field [T], Gau_delta [mus-1], jump_rate (MHz)
         '''
         N = x.shape[0]
-        w = 2*pi*L_field*self.gamma_mu
+        w = 2*pi*L_field*self-_gamma_mu_
         if jump_rate==0: # static 
            f = self._kg(x,w,Gau_delta) # normalized to 1.
         else :            # dynamic
@@ -238,17 +236,23 @@ class mumodel(object):
         f = asymmetry*np.real(f[0:N])
         return f
 
-    def _chisquare_(self,**kwargv):
+    def _chisquare_(self,*argv):
         '''
-        kwargs is a dictionary of dictionaries
+        argv
         use e.g. for a blmg model as: 
           m=mumodel() 
           m._init_(x,y,e) 
-          iminuit.migrad(m._chisquare_(**{'c1':{m.bl:[asy1,rate1]},'c2':{m.mg:[asy2,fld2,ph2,rate2]}})                    
-        'c1','c2' are unique but dummy
+          iminuit.migrad(m._chisquare_,**{'asy1':val1,'error_asy1:val,'fix_asy1':False,'limits_asy1':(val,val),
+                                          'rate1':val2,'error_rate1:val,'fix_rate1':False,'limits_rate1':(val,val),
+                                          'asy2':val3,'error_asy2:val,'fix_asy2':False,'limits_asy2':(val,val),
+                                          'field2':val4,'error_field2:val,'fix_field2':False,'limits_field2':(val,val),
+                                          'phase2':val5,'error_phase2:val,'fix_phase2':False,'limits_phase2':(val,val),
+                                          'rate2':val6,'error_rate2:val,'fix_rate2':False,'limits_rate2':(val,val)}
+        argv will be tuple of parameter values at this iteration (val1,val2.val3,val4,val5,val6)
+        _add_ reconstructs how to distribute these parameter values
         chisquare is normalized if self.e was provided, unnormalized otherwise
         '''  
-        return sum(((self._add_(self.x,**kwargv)-self.y)/self.e)**2)
+        return sum(((self._add_(self._x_,*argv)-self._y_)/self._e_)**2)
 
 
 # old.available_components =({'name':'da','npar':1,'par':[{'name':'dalpha','stepbounds':[0.,0.,0.]}],
