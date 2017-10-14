@@ -1,11 +1,3 @@
-from mujpy.mufit import MuFit as mufit
-import mujpy.musr2py.musr2py as muload 
-import numpy as np
-import matplotlib.pyplot as P
-from iminuit import Minuit as M , describe, Struct
-from mujpy.mucomponents.muprompt import muprompt # check
-from mujpy import __file__ as MuJPyName
-import os
 # from collections import OrderedDict as dict
 
 # 1 Aug 2017 done
@@ -31,10 +23,6 @@ import os
 # backward group = mugui.group[1].value
 # fit first bin, last bin = mugui.binrange[0,1].value
 ######################################################
-font = {'family' : 'Ubuntu',
-        'size'   : 8}
-P.rc('font', **font)
-
 class mugui(object):
 
     def __init__(self):
@@ -45,6 +33,10 @@ class mugui(object):
          MuJPy = MG() # instance is MuJPy
          MuJPy.start()
         '''
+        import numpy as np
+        import os
+        from mujpy import __file__ as MuJPyName
+
         self.interval = np.array([0,7800], dtype=int)
         self.binning = 1
 
@@ -129,6 +121,8 @@ class mugui(object):
         translated into histo indices (n-1, python style) 
         and stored in a dictionary of two np.arrays
         """
+        import numpy as np
+
         # two shorthands: either a list, comma separated, such as 1,3,5,6 
         # or a pair of integers, separated by a colon, such as 1:3 = 1,2,3 
         # only one column is allowed, but 1, 3, 5 , 7:9 = 1, 3, 5, 7, 8, 9 
@@ -169,6 +163,7 @@ class mugui(object):
         '''
         calculates the grand totals and group totals after a single run is read
         '''
+        import numpy as np
 # called only by self.suite after having loaded a run
         gr = set(np.concatenate((self.grouping['forward'],self.grouping['backward'])))
         tsum, gsum = 0, 0
@@ -199,6 +194,7 @@ class mugui(object):
          MuJPy.start() # launch several methods and this gui
         '''
         from ipywidgets import Image, Text, Layout, HBox, Output, VBox, Tab
+        import os
                         
         file = open(os.path.join(self.__logopath__,"logo.png"), "rb")
         image = file.read()
@@ -251,7 +247,7 @@ class mugui(object):
             accepted functions are RHS of agebraic expressions of parameters p[i], i=0...ntot  
             '''
             import re
-            from aux.safetry import safetry
+            from mujpy.aux.safetry import safetry
 
             pattern = re.compile(r"\p\[(\d+)\]") # find all patterns p[*] where * is digits
             test = pattern.sub(r"a",string) # substitute "a" to "p[*]" in s
@@ -270,17 +266,44 @@ class mugui(object):
 
         def on_fit_request(b):
             '''
-            collect all values: parameters values, flags, errors, limits, functions, alpha, fit_range
-            pass them to myfit
+            collect all values: 
+            parameters values (parvalue[nint].value), flags (flag[nint].value), 
+            errors, limits, functions (function[nint].value), self.alpha, self.fit_range.value
             construct _int (see mumodel)
-            mumodel-_load_data_
+            pass them to myfit
+            mumodel._load_data_
             call minuit
             save values in myfit
             save 
             print summary
             '''
-            _int
+            from mujpy.mucomponents.mucomponents import mumodel
 
+            ntot = sum([len(myfit.internal_components[k]['pars']) for k in range(len(myfit.internal_components))])
+            lmin = [-1]*ntot
+            nint = -1 # initialize
+            nmin = -1 # initialize
+            _int = []
+            for k in range(len(myfit.internal_components)):  # scan the model
+                component = mumodel().__class__.__dict__[myfit.internal_components[k]['name']] # the method
+                keys = []
+                for j in range(len(myfit.internal_components[k]['pars'])): # 
+                    nint += 1  # internal parameter incremente always   
+                    if flag[nint].value == '=': #  function is written in terms of nint
+                        # must be translated into nmin
+                        str = function[nint].value
+                        indices = [int(s) for s in str.split() if s.isdigit()]
+                        for l in indices:
+                            str.replace(l,lmin[l])
+                        keys.append(function[nint].value)
+                    else:
+                        keys.append('~')
+                        nmin += 1
+                        lmin[nmin] = nint # number of minuit parameter
+                _int.append([component,keys])
+           # for k in range(len(_int)):
+           #     print(_int[k])      
+ 
         def on_flag_changed(change):
             '''
             observe response of fit tab widgets:
@@ -355,6 +378,8 @@ class mugui(object):
         ######### here starts the fit method of MuGui
         from ipywidgets import FloatText, Text, IntText, Layout, Button, HBox, \
                                Checkbox, VBox, Dropdown
+        from mujpy.mufit import MuFit as mufit
+        import numpy as np
 
         myfit = mufit()  # this is the official instance of mufit inside mugui, should it be a self. ?
         # myfit.deletemodel() # this isn't really needed, because mufit is initialized bare of model
@@ -486,7 +511,8 @@ class mugui(object):
         self.binrange[2].on_click(save_setup)  # change to fit_range plot_range 
         """
         import dill as pickle
-
+        import os
+                        
         path = os.path.join(self.__startuppath__,'mujpy_setup.pkl')
         # print('loading {}, presently in {}'.format(path,os.getcwd()))
         try:
@@ -542,6 +568,11 @@ class mugui(object):
         plots prompts and their fit (default no print, no plot)
         stores bins for background and t0        
         '''
+        import numpy as np
+        from iminuit import Minuit as M , describe, Struct
+        import matplotlib.pyplot as P
+        from mujpy.mucomponents.muprompt import muprompt
+
         font = {'family' : 'Ubuntu','size'   : 6}
         P.rc('font', **font)
 
@@ -555,7 +586,6 @@ class mugui(object):
             x = np.arange(0,nbin,dtype=int) # nbin bins from 0 to nbin-1
             self.lastbin, np3s = npeaks - self.prepostpk[0].value, npeaks + self.prepostpk[1].value # final bin of first and 
                                                                                                 # initial bin of second plateaus
-#            mm = np.vectorize(muprompt)
 
             if mplot and self.first_t0plot:
                 with self.t0plot_container:
@@ -646,6 +676,8 @@ class mugui(object):
         self.binrange[2].on_click(save_setup)  #  change to fit, plot range
         """
         import dill as pickle
+        import os
+
         path = os.path.join(self.__startuppath__, 'mujpy_setup.pkl')
         with open(path,'wb') as f:
             pickle.dump(self, f) 
@@ -691,6 +723,8 @@ class mugui(object):
         reads from a dictionary of two np.arrays
         and produces the self.grouping[].value shorthand string that goes in the gui
         """
+        import numpy as np
+
         # allows any succession of csv and 'n:m' formats
         # compatible with get_groupings, but not implemented there yet
         #       get the shorthand from the gui Text 
@@ -730,6 +764,7 @@ class mugui(object):
             observe response of setup tab widgets:
             check that paths exist, in case creates analysis path
             '''
+            import os
 
             path = change['owner'].description # description is paths[k] for k in range(len(paths)) () 
             k = paths_content.index(path) # paths_content.index(path) is 0,1,2 for paths_content = 'data','tlog','analysis'
@@ -868,7 +903,11 @@ class mugui(object):
             '''
             observe response of suite tab widgets:
             try loading a run via musrpy 
-            '''          
+            '''
+            import mujpy.musr2py.musr2py as muload
+            import numpy as np
+            import os
+
             run_or_runs = change['owner'].description # description is either 'Single run' or 'Run  suite'
             if run_or_runs == loads[0]: # 'Single run'
                 self.globalfit = False
