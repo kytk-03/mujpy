@@ -1,13 +1,3 @@
-# from collections import OrderedDict as dict
-
-# 1 Aug 2017 done
-# 10 Sept 
-# to do [version]: 
-# write about [0.1]
-# downoad on git.hub [0.1]
-# ------------------- done the above
-# cythonize promptfit [0.1.1]
-# cythonize fit 
 # link fit tab methods to self.myfit 
 # write on_fit_request for fit_button.on_click(on_fit_request)
 # write tlog
