@@ -277,24 +277,6 @@ class MuFit(object):                        # defines the python class
             for k in range(n):
                 text(0,n-k,'- {}:  {}'.format(key.dic[key]),fontsize=14)
 
-    def int2min(self):
-        '''
-        From internal parameters to minuit parameters.
-        Invoked just before submitting minuit 
-        Internal are numbered progressively according to the display:
-           first global parameters not belonging to components - e.g. A0, R, 
-                    such as for asymmetry1 = A0*R and asymmetry2= A0*(1.-R)
-           then local parameters not belonging to components - e.g. B and T
-                    from the data file headers
-           then the list of components' parameters
-        Minuit parameters are the same, including fixed ones, but 
-           the ones defined by functions or sharing
-        [plus
-           the local replica of the non global component parameters
-           to be implemented]
-        '''
-
-
     def load(self,path):
         """
         usage:
@@ -303,14 +285,6 @@ class MuFit(object):                        # defines the python class
         """
         with open(path,'rb') as f:
             self.__dict__.update(pickle.load(f).__dict__)
-
-    def min2int(self):
-        '''
-        From minuit parameters to internal parameters,
-        see int2min for a description   
-        Invoked just after minuit convergence.
-        '''
-   
         
     def plot_limits(self, plot_init = 0, plot_last = 10000. ):
          self.plt_ini = plot_init
