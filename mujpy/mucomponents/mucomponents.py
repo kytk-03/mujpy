@@ -1,6 +1,6 @@
-from numpy import cos, pi, exp, sqrt
-import numpy as np
+from numpy import cos, pi, exp, sqrt, real, nan_to_num, inf, ceil, linspace, zeros, ones, hstack, fft
 from scipy.special import dawsn,erf, j0
+from scipy.constants import physical_constants as C
 
 class mumodel(object):
     def __init__(self):
@@ -8,6 +8,7 @@ class mumodel(object):
         defines few constants and _help_ dictionary
         '''
         self._radeg_ = pi/180.
+        self._gamma_Mu_MHzperT = 3.183345142*C['proton gyromag. ratio over 2 pi'][0]  # numbers are from Particle Data Group 2017
         self._gamma_mu_ = 135.5
         self._help_ = {'bl':r'Lorentz decay: $\mbox{asymmetry}\exp(-\mbox{Lor_rate}t)$',
                      'bg':r'Gauss decay: $\mbox{asymmetry}\exp(-0.5(\mbox{Gau_rate}t)^2)$',
@@ -40,8 +41,8 @@ class mumodel(object):
             self._y_ = y
             self._alpha_ = _alpha
             self._int = _int
-        if e==1:
-            self._e_ = np.ones(x.shape[0])
+        if e.all()==1:
+            self._e_ = ones(x.shape[0])
         else:
             if e.shape[0]!=x.shape[0]:
                 raise ValueError('x, e have different lengths')           
@@ -52,32 +53,40 @@ class mumodel(object):
 
     def _add_(self,x,*argv):
         '''
-        used by self._chisquare_ 
         e.g. a blmg model with 
         argv will be a tuple of parameter values (val1,val2.val3,val4,val5,val6) at this iteration 
         _add_ reconstructs how to distribute these parameter values
         use to plot : 
           plt.errorbar(x,y,yerr=e)
-          plt.plot(x,mumodel()._add_(x,val1,val2.val3,val4,val5,val6)                    
+          plt.plot(x,mumodel()._add_(x,val1,val2.val3,val4,val5,val6)
+        also invoked by self._chisquare_           
         '''  
         _da_flag_ = False
-        f = np.zeros(x.shape[0])   
-        p = argv
+        f = zeros(x.shape[0])   
+        #print('p = {}'.format(argv))
+        p = argv # minuit stack of parameters
         k = -1
-        for component,parkeys in self._int:   # this allows only for single run fits       
+        # print('p = '.format(p))
+        for component_dict,parkeys in self._int:   # this allows only for single run fits       
             p_comp = []
-            for key in parkeys:
-                if key == '~':
-                    k += 1
-                    p_comp.append(p[k])
-                else:
-                    p_comp.append(eval(key[1:]))
-            if component == self.da:
-                _da_Flag = True
+            for name in component_dict:
+                component = component_dict[name]
+                for key in parkeys:
+                    if key == '~': # key is `~' also when flag is '!'
+                        k += 1
+                        p_comp.append(p[k]) # this is a parameter value from the stack
+                    else: # flag is '='
+                        p_comp.append(eval(key[1:])) # this is a function string already referenced to the stack 
+            # this loop assigns all component parameters from the stack
+            # now use them in the component - handle of a mucomponents method
+            if name == 'da' :#if str(component).find('.da ')+1:
+                _da_flag = True
+                # print('{}=self.da True'.format(str(component)))
                 da = p_comp[0]
             else:
-                f += component(x,*p_comp)
-        if _da_Flag:
+                # print('{}=self.da False'.format(str(component)))
+                f += component(x,*p_comp) # calculate the component
+        if _da_flag:
             dada = da/self._alpha_
             f = ((2.+dada)*f-dada)/((2.+dada)-dada*f) # linearized correction 
         return f     
@@ -109,13 +118,15 @@ class mumodel(object):
         x [mus], dalpha
         '''
         # the returned value will not be used, correction in _add_
-        return x*dalpha
+        # print('dalpha = {}'.format(dalpha))
+        return zero(x.shape[0])
 
     def ml(self,x,asymmetry,field,phase,Lor_rate): 
         '''
         fit component for a precessing muon with Lorentzian decay, 
         x [mus], asymmetry, field [T], phase [degrees], Lor_rate [mus-1]
         '''
+        # print('a={}, B={}, ph={}, lb={}'.format(asymmetry,field,phase,Lor_rate))
         return asymmetry*cos(2*pi*self._gamma_mu_*field*x+phase*self._radeg_)*exp(-x*Lor_rate)
 
     def mg(self,x,asymmetry,field,phase,Gau_rate): 
@@ -168,9 +179,9 @@ class mumodel(object):
         fdc = dawsn(argf)
         wx = w*x
         if (w!=0): # non-vanishing Longitudinal Field
-            Aa = np.real(exp(-0.5*DDtt + 1j*wx)*dawsn(-argf - 1j*Dt/sqr2) )
-            Aa[Aa == np.inf] = 0 # bi-empirical fix
-            np.nan_to_num(Aa,copy=False) # empirical fix 
+            Aa = real(exp(-0.5*DDtt + 1j*wx)*dawsn(-argf - 1j*Dt/sqr2) )
+            Aa[Aa == inf] = 0 # bi-empirical fix
+            nan_to_num(Aa,copy=False) # empirical fix 
             A=sqr2*(Aa + fdc)
             f = 1. - 2.*DD/w**2*(1-exp(-.5*DDtt)*cos(wx)) + 2.*(Gau_delta/w)**3*A
         else:
@@ -189,18 +200,18 @@ class mumodel(object):
         '''
         alphaN = 10. if not argv else argv[0] # default is 10.
         dt = x[1]-x[0]
-        N = x.shape[0] + int(np.ceil(x[0]/dt)) # for function to include t=0
+        N = x.shape[0] + int(ceil(x[0]/dt)) # for function to include t=0
         Npad = N * 2 # number of total time points, includes as many zeros
-        t = dt*np.linspace(0.,Npad-1,Npad)
+        t = dt*linspace(0.,Npad-1,Npad)
         expwei = exp(-(alphaN/(N*dt))*t)
 
         gg = self._kg(t,w,Gau_delta)*(t < dt*N)  #  padded_KT
         # gg = 1/3*(1 + 2*(1 - s^2*tt.^2).*exp(-(.5*s^2)*tt.^2)) % 
 
-        ff = np.fft.fft(gg*expwei*exp(-jump_rate*t)) # fft(padded_KT*exp(-jump_rate*t))
+        ff = fft.fft(gg*expwei*exp(-jump_rate*t)) # fft(padded_KT*exp(-jump_rate*t))
         FF = exp(-jump_rate*dt)*ff/(1.-(1.-exp(-jump_rate*dt))*ff) # (1-jump_rate*dt*ff)  
 
-        dkt = np.real(np.fft.ifft(FF))/expwei  # ifft
+        dkt = real(fft.ifft(FF))/expwei  # ifft
         dkt = dkt[0:N] # /dkt(1) 
 
         #if (nargout > 1),
@@ -223,55 +234,23 @@ class mumodel(object):
 # function generated from t=0, shift result nshift=data(1,1)/dt bins backward
            dt = x[1]-x[0]
            nshift = x[0]/dt
-           Ns = N + np.ceil(nshift)
+           Ns = N + ceil(nshift)
            if Ns%2: # odd
                Np = Ns//2
                Nm = -Np
            else: # even
                Np = Ns//2-1
                Nm = -Ns//2
-           n = np.hstack((np.linspace(0,Np,Np+1),np.linspace(Nm,-1.,-Nm)))
-           f = np.fft.ifft(np.fft.fft(f)*exp(nshift*1j*2*pi*n/Ns)); # shift back
+           n = hstack((inspace(0,Np,Np+1),linspace(Nm,-1.,-Nm)))
+           f = fft.ifft(fft.fft(f)*exp(nshift*1j*2*pi*n/Ns)); # shift back
         # multiply by amplitude
-        f = asymmetry*np.real(f[0:N])
+        f = asymmetry*real(f[0:N])
         return f
-
     def _chisquare_(self,*argv):
         '''
-        argv
-        use e.g. for a blmg model as: 
-          m=mumodel() 
-          m._init_(x,y,e) 
-          iminuit.migrad(m._chisquare_,**{'asy1':val1,'error_asy1:val,'fix_asy1':False,'limits_asy1':(val,val),
-                                          'rate1':val2,'error_rate1:val,'fix_rate1':False,'limits_rate1':(val,val),
-                                          'asy2':val3,'error_asy2:val,'fix_asy2':False,'limits_asy2':(val,val),
-                                          'field2':val4,'error_field2:val,'fix_field2':False,'limits_field2':(val,val),
-                                          'phase2':val5,'error_phase2:val,'fix_phase2':False,'limits_phase2':(val,val),
-                                          'rate2':val6,'error_rate2:val,'fix_rate2':False,'limits_rate2':(val,val)}
-        argv will be tuple of parameter values at this iteration (val1,val2.val3,val4,val5,val6)
-        _add_ reconstructs how to distribute these parameter values
-        chisquare is normalized if self.e was provided, unnormalized otherwise
-        '''  
+        signature provided at Minuit invocation by 
+           optional argument forced_parameters=parnames
+           where parnames is a tuple of parameter names 
+           e.g. ('asym','field','phase','rate') 
+        '''
         return sum(((self._add_(self._x_,*argv)-self._y_)/self._e_)**2)
-
-
-# old.available_components =({'name':'da','npar':1,'par':[{'name':'dalpha','stepbounds':[0.,0.,0.]}],
-#                                     'help':r'linear $f$ correction: $\frac{2\alpha-p[0](1-f)}{2\alpha+p[0](1-f)}$'},
-#                                    {'name':'bl','npar':2,'par':[{'name':'blAsym','stepbounds':[0.,0.,0.]},
-#                                                                {'name':'blDelo','stepbounds':[0.,0.,0.]}],
-#                                     'help':r'Lorenz decay: $p[0]\exp(-p[1]t)$'},
-#                                    {'name':'bg','npar':2,'par':[{'name':'bgAsym','stepbounds':[0.,0.,0.]},
-#                                                                {'name':'muSigm','stepbounds':[0.,0.,0.]}],
-#                                     'help':r'Gauss decay: $p[0]\exp(-(p[1]t)^2)/2$'},
-#                                    {'name':'ml','npar':4,'par':[{'name':'mlAsym','stepbounds':[0.,0.,0.]},
-#                                                                {'name':'mlBGau','stepbounds':[0.,0.,0.]},
-#                                                                {'name':'mlPhiD','stepbounds':[0.,0.,0.]},
-#                                                                {'name':'mlDelo','stepbounds':[0.,0.,0.]}],
-#                                     'help':r'Lorenz decay cosine: $p[0]\exp(-p[3]t)\cos(2\pi(\gamma_\mu p[1] + p[2]/180.))$'},
-#                                    {'name':'mg','npar':3,'par':[{'name':'mgAsym','stepbounds':[0.,0.,0.]},
-#                                                                {'name':'mgBGau','stepbounds':[0.,0.,0.]},
-#                                                                {'name':'mgPhiD','stepbounds':[0.,0.,0.]},
-#                                                                {'name':'mgSigm','stepbounds':[0.,0.,0.]}],
-#                                     'help':r'Gauss decay cosine: $p[0]\exp(-(p[3]t)^2/2)\cos(2\pi(\gamma_\mu p[1] + p[2]/180.))$'}
-#                                    )
-
