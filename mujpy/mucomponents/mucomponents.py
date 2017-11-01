@@ -38,10 +38,11 @@ class mumodel(object):
             raise ValueError('x, y have different lengths')
         else:
             self._x_ = x
+            # print('siz = {}'.format(self._x_.shape[0])) 
             self._y_ = y
             self._alpha_ = _alpha
             self._int = _int
-        if e.all()==1:
+        if e.shape[0]==1:
             self._e_ = ones(x.shape[0])
         else:
             if e.shape[0]!=x.shape[0]:
@@ -68,7 +69,7 @@ class mumodel(object):
         k = -1
         # print('p = '.format(p))
         for component_dict,parkeys in self._int:   # this allows only for single run fits       
-            p_comp = []
+            p_comp = [] # must be called p for correct eval-uation
             for name in component_dict:
                 component = component_dict[name]
                 for key in parkeys:
@@ -76,13 +77,13 @@ class mumodel(object):
                         k += 1
                         p_comp.append(p[k]) # this is a parameter value from the stack
                     else: # flag is '='
-                        p_comp.append(eval(key[1:])) # this is a function string already referenced to the stack 
+                        p_comp.append(eval(key)) # this is a function string already referenced to the stack 
             # this loop assigns all component parameters from the stack
             # now use them in the component - handle of a mucomponents method
             if name == 'da' :#if str(component).find('.da ')+1:
                 _da_flag = True
                 # print('{}=self.da True'.format(str(component)))
-                da = p_comp[0]
+                da = p[0]# da must be first!!!
             else:
                 # print('{}=self.da False'.format(str(component)))
                 f += component(x,*p_comp) # calculate the component
@@ -246,6 +247,7 @@ class mumodel(object):
         # multiply by amplitude
         f = asymmetry*real(f[0:N])
         return f
+
     def _chisquare_(self,*argv):
         '''
         signature provided at Minuit invocation by 
@@ -253,4 +255,5 @@ class mumodel(object):
            where parnames is a tuple of parameter names 
            e.g. ('asym','field','phase','rate') 
         '''
-        return sum(((self._add_(self._x_,*argv)-self._y_)/self._e_)**2)
+        return sum(  ( (self._add_(self._x_,*argv) - self._y_) /self._e_)**2  )
+

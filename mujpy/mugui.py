@@ -64,8 +64,20 @@ class mugui(object):
         self.suite()
         self.fit()
 
-        self.output()
-        self.plot()
+        self.output() # this calls output(self) that defines self._output_
+
+        #####################################
+        # static figures 
+        #####################################
+        self.fig_fit = [] # initialize to false, it will become a pyplot.subplots instance 
+#        self.graph_fit = Toplevel()
+#        canvas_fit = FigureCanvas(self.fig_fit, master=self.graph_fit)
+#        canvas_fit.get_tk_widget().pack()
+#        self.toolbar_fit = Navig(canvas_fit,self.graph_fit)
+#        self.toolbar_fit.update()
+#        self.graph_fit.withdraw()  # self.graph_fit.deiconify() brings it back up
+
+
         # self fft
         # self.tlog
         self.about()
@@ -177,7 +189,7 @@ class mugui(object):
         enn0 = enn0[0] # initial rate per ns
         y = (yforw-self.alpha.value*ybackw)/enn0*np.exp(self.time/self.TauMu_mus)  # since self.time is an np.arange, this is a numpy array
         ey = np.sqrt(cforw + self.alpha.value**2*cbackw)*np.exp(self.time/self.TauMu_mus)/enn0 # idem
-        ey[ey==0] = 1 # substitute zero with one in ey
+        ey[np.where(ey==0)] = 1 # substitute zero with one in ey
         if self._global_fit_: # the first call of the suite the master, resets binwidth_ns, hence self.firstrun=True 
             if self.firstrun:
                 self.asymm = y # np.array
@@ -206,8 +218,8 @@ class mugui(object):
                 tab structure
         '''
         from ipywidgets import Image, Text, Layout, HBox, Output, VBox, Tab
-        import os
-                        
+        import os                      
+
         file = open(os.path.join(self.__logopath__,"logo.png"), "rb")
         image = file.read()
         logo = Image(value=image,format='png',width=132,height=132)
@@ -222,8 +234,8 @@ class mugui(object):
         self.nsbin = Text(description='ns/bin',layout=Layout(width='20%'),disabled=True)
         secondrow = HBox(description='counts',layout=Layout(width='100%'))
         secondrow.children = [self.totalcounts, self.groupcounts, self.nsbin]
-        # self._output = Output(layout=Layout(width='100%'))
-        # thirdrow = HBox([self._output],layout=Layout(height='60px',width='100%',overflow_y='scroll',overflow_x='scroll')) # x works y does scroll
+        # self._output_ = Output(layout=Layout(width='100%'))
+        # thirdrow = HBox([self._output_],layout=Layout(height='60px',width='100%',overflow_y='scroll',overflow_x='scroll')) # x works y does scroll
         titlewindow = VBox()
         titlewindow_content = [titlerow, secondrow] # ,thirdrow (moved to 4th tab)
         titlewindow.children = titlewindow_content
@@ -336,27 +348,32 @@ class mugui(object):
             except Exception as e: 
                 print(e)
 
-        def addcomponent(name):
+        def addcomponent(name,label):
             '''
             myfit = MuFit()
             addcomponent('ml') # adds e.g. a mu precessing, lorentzian decay, component
             this method adds a component selected from self.available_component, tuple of directories
             with zeroed values, stepbounds from available_components, flags set to '~' and empty functions
             '''
+            from copy import deepcopy
             if name in self.component_names:
-                npar = len(self.available_components[self.component_names.index(name)]['pars']) # number of pars
-                pars = self.available_components[self.component_names.index(name)]['pars'] # list of dictionaries for the parameters
-                # e.g {'name':'asymmetry','error',0.01,'limits',[0, 0]}
-                for k in range(npar):
-                    pars[k].update({'value':0.0})
-                    pars[k].update({'flag':'~'})
-                    pars[k].update({'function':''}) # adds these three keys to each pars dict
+                k = self.component_names.index(name)
+                npar = len(self.available_components[k]['pars']) # number of pars
+                pars = deepcopy(self.available_components[k]['pars']) # list of dicts for 
+                # parameters, {'name':'asymmetry','error',0.01,'limits',[0, 0]}
+
+                # now remove parameter name degeneracy                   
+                for j, par in enumerate(pars):
+                    pars[j]['name'] = par['name']+label
+                    pars[j].update({'value':0.0})
+                    pars[j].update({'flag':'~'})
+                    pars[j].update({'function':''}) # adds these three keys to each pars dict
                     # they serve to collect values in mugui
                 self.model_components.append({'name':name,'pars':pars})
                 return True # OK code
             else:
                 self.mainwindow.selected_index=3
-                with self._output:
+                with self._output_:
                     print ('\nWarning: '+name+' is not a known component. Not added.\n'+
                            'With myfit = mufit(), type myfit.help to see the available components')
                 return False # error code
@@ -377,6 +394,7 @@ class mugui(object):
             this method adds a model of components selected from the available_component tuple of directories
             with zeroed values, stepbounds from available_components, flags set to '~' and empty functions
             '''
+            import string
     # name 2_0_mlml_blbl for 2 global parameters (A0 R), 0 kocal parameters (B end T) and two models 
     # e.g. alpha fit with a WTF and a ZF run, with two muon fractions of amplitude A0*R and A0*(1-R) respectively
     # find the three underscores in name by
@@ -386,8 +404,9 @@ class mugui(object):
             if components: # exploits the fact that [] is False and ['da'] is true
                 self.model = name
                 self.model_components = [] # start from empty model
-                for component in components:
-                    addcomponent(component)
+                for k,component in enumerate(components):
+                    label = string.ascii_uppercase[k]
+                    addcomponent(component,label)
                 return True
             else:
                 return False
@@ -420,21 +439,21 @@ class mugui(object):
                 comma = string.find(',')
             except:
                 self.mainwindow.selected_index=3
-                with self._output:
+                with self._output_:
                     print("comma separated values, please")
                 return -1,-1 
             try:
                 first = int(string[:comma])
             except:
                 self.mainwindow.selected_index=3
-                with self._output:
+                with self._output_:
                     print("Could not read first bin")
                 return -1,0
             try:
                 last = int(string[comma+1:])
             except:
                 self.mainwindow.selected_index=3
-                with self._output:
+                with self._output_:
                     print("Could not read last bin")
                 return 0,-1
             return first,last 
@@ -444,6 +463,21 @@ class mugui(object):
             # _grouping = self.grouping # {'forward':np.array,'backward':np.array}
             # _fit_range = [self.derange()[k] for k in range(2)] # changes to fit_range (derange('target='plot') for plot_range)
             # _plot_range = [self.derange(target='plot')[k] for k in range(2)] # changes to plot_range (derange('target='plot') for plot_range)
+
+        def findall(p, s):
+            '''Yields all the positions of
+            the pattern p in the string s.'''
+            i = s.find(p)
+            while i != -1:
+                yield i
+                i = s.find(p, i+1)
+
+        def find_nth(haystack, needle, n):
+                   start = haystack.rfind(needle)
+                   while start >= 0 and n > 1:
+                       start = haystack.rfind(needle, 1, start-1)
+                       n -= 1
+                   return start
 
         def get_grouping(name):
             """
@@ -498,6 +532,7 @@ class mugui(object):
             for the use of mucomponents._add_.
             Invoked just before submitting minuit 
             '''
+            # refactor : this routine has much in common with min2int
             ntot = sum([len(self.model_components[k]['pars']) for k in range(len(self.model_components))])
             lmin = [-1]*ntot
             nint = -1 # initialize
@@ -511,13 +546,10 @@ class mugui(object):
                 keys = []
                 for j in range(len(self.model_components[k]['pars'])): # 
                     nint += 1  # internal parameter incremente always   
-                    if flag[nint].value == '=': #  function is written in terms of nint
-                        # must be translated into nmin 
-                        str = function[nint].value
-                        indices = [int(s) for s in str.split() if s.isdigit()]
-                        for l in indices:
-                            str.replace(l,lmin[l])
-                        keys.append(function[nint].value)
+                    if self.flag[nint].value == '=': #  function is written in terms of nint
+                        # nint must be translated into nmin 
+                        string = translate(nint,lmin)
+                        keys.append(string) # the function will be eval-uated, eval(key)
                     else:
                         keys.append('~')
                         nmin += 1
@@ -529,7 +561,7 @@ class mugui(object):
             return _int
 
 
-        def int2min():
+        def int2min(return_names=False):
             '''
             From internal parameters to minuit parameters.
             Invoked just before submitting minuit 
@@ -547,7 +579,7 @@ class mugui(object):
                to be implemented]
             '''
             ntot = sum([len(self.model_components[k]['pars']) for k in range(len(self.model_components))])
-            ntot -= sum([1 for k in range(ntot) if flag[k]=='=']) # ntot minus number of functions 
+            ntot -= sum([1 for k in range(ntot) if self.flag[k]=='=']) # ntot minus number of functions 
             lmin = [-1]*ntot
             nint = -1 # initialize
             nmin = -1 # initialize
@@ -558,64 +590,92 @@ class mugui(object):
                 keys = []
                 for j, par in enumerate(self.model_components[k]['pars']): # list of dictionaries, par is a dictionary
                     nint += 1  # internal parameter incremented always   
-                    if flag[nint].value != '=': #  skip functions, they are not new minuit parameter
+                    if self.flag[nint].value == '~': #  skip functions, they are not new minuit parameter
                         keys.append('~')
                         nmin += 1
                         lmin[nmin] = nint # correspondence between nmin and nint, is it useful?
-                    fitargs.update({par['name']:float(parvalue[nint].value)})
-                    minuit_parameter_names.append(par['name'])
-                    fitargs.update({'error_'+par['name']:float(par['error'])})
-                    if flag[nint].value == '!':
+                        fitargs.update({par['name']:float(self.parvalue[nint].value)})
+                        minuit_parameter_names.append(par['name'])
+                        fitargs.update({'error_'+par['name']:float(par['error'])})
+                        if not (par['limits'][0] == 0 and par['limits'][1] == 0):
+                            fitargs.update({'limit_'+par['name']:par['limits']})
+                    elif self.flag[nint].value == '!':
+                        fitargs.update({par['name']:float(self.parvalue[nint].value)})
+                        minuit_parameter_names.append(par['name'])
                         fitargs.update({'fix_'+par['name']:True})
-                    if not (par['limits'][0] == 0 and par['limits'][1] == 0):
-                        fitargs.update({'limit_'+par['name']:par['limits']})
 
             # print('fitargs= {}'.format(fitargs))
-            return fitargs, tuple(minuit_parameter_names)
+            if return_names:
+                return fitargs, tuple(minuit_parameter_names)
+            else:
+                return fitargs
 
-        def path_file_dialog(path):
-            import tkinter
-            from tkinter import filedialog
-            import os
-            here = os.getcwd()
-            oc.chdir(path)
-            tkinter.Tk().withdraw() # Close the root window
-            in_path = filedialog.askopenfilename()
-            os.chdir(here)
-            return in_path
-
-        def load_fit():
+        def load_fit(b):
             '''
             loads fit values such that the same fit can be reproduced on the same data
             '''
             import dill as pickle
             import os
 
-            path_and_filename = path_file_dialog(self.paths[2].value)
-            with open(path_and_filename,'rb') as f:
-                fit_dict = pickle.load(f) 
-            self.version.value = fit_dict['version']
-            self.offset.value = fit_dict['self.offset.value']
-            self.model_components = fict_dict['self.model_components']
-            self.grouping = fit_dict['self.grouping']
-            self.alpha.value = fit_dict['self.alpha.value']
-            self.alpha.value = fit_dict['self.alpha.value']
-            
+            path_and_filename = path_file_dialog(self.paths[2].value) # returns the full path and filename
+            #with self._output_:
+            #    print('Loaded fit results from: {}'.format( path_and_filename))
+            try:            
+                with open(path_and_filename,'rb') as f:
+                    fit_dict = pickle.load(f)
+                try: 
+                    del _the_model_
+                except:
+                    pass
+                #with self._output_:
+                #    print(fit_dict)
+                model.value = fit_dict['model.value']
+                self.fit(model.value) # re-initialize the tab with a new model
+                self.version.value = fit_dict['version']
+                self.offset.value = fit_dict['self.offset.value']
+                self.model_components = fit_dict['self.model_components']
+                self.grouping = fit_dict['self.grouping']
+                set_group()
+                self.alpha.value = fit_dict['self.alpha.value']
+                self.offset.value = fit_dict['self.offset.value']
+                nint = fit_dict['nint']
+                for k in range(nint+1):
+                    self.parvalue[k].value = fit_dict['_parvalue['+str(k)+']']  # fit result
+                    self.flag[k].value = fit_dict['_flag['+str(k)+    ']']  # from fit tab
+                    self.function[k].value = fit_dict['_function['+str(k)+']'] # from fit tab
+                self.mainwindow.selected_index=2
+
+            except Exception as e:
+                print('Problems with reading {} file\n\nException: {}'.format(path_and_filename,e))
+
 
         def min2int(fitargs):
             '''
             From minuit parameters to internal parameters,
             see int2min for a description   
-            Invoked just after minuit convergence.
+            Invoked just after minuit convergence for summary purposes
             '''
-            nint = -1
+            # refactor : this routine has much in common with int2_int
+            # initialize
             ntot = sum([len(self.model_components[k]['pars']) for k in range(len(self.model_components))])
             _parvalue =  []
+            lmin = [-1]*ntot 
+            p = [0.0]*ntot 
+            nint = -1
+            nmin = -1
             for k in range(len(self.model_components)):  # scan the model
+                keys = []
                 for j, par in enumerate(self.model_components[k]['pars']): # list of dictionaries, par is a dictionary
                     nint += 1  # internal parameter incremented always   
-                    if flag[nint].value != '=': #  skip functions, they are not new minuit parameter
-                        _parvalue.append(str(fitargs[par['name']]))
+                    if self.flag[nint].value != '=': #  skip functions, they are not new minuit parameter
+                        nmin += 1
+                        p[nmin] = fitargs[par['name']] # needed also by functions
+                        _parvalue.append(str(p[nmin]))                        
+                        lmin[nint] = nmin # number of minuit parameter
+                    else: # functions, calculate as such
+                        # nint must be translated into nmin 
+                        string = translate(nint,lmin) # 
+                        _parvalue.append(str(eval(string))) 
             return _parvalue
             
         def muvalid(string):
@@ -640,6 +700,18 @@ class mugui(object):
                 valid = False
             return valid
 
+        def on_alpha_changed(change):
+            '''
+            observe response of fit tab widgets:
+            validate float        
+            '''
+            string = change['owner'].value # description is three chars ('val','fun','flg') followed by an integer nint
+                                               # iterable in range(ntot), total number of internal parameters
+            try: 
+                float(string)
+            except:
+                change['owner'].value = '{:.4f}'.format(alpha0)
+
         def on_fit_request(b):
             '''
             retrieve data from the gui:
@@ -656,35 +728,86 @@ class mugui(object):
             '''
             from iminuit import Minuit as M
             import matplotlib.pyplot as P
+            from scipy.stats import norm
+            from scipy.special import gammainc
 
-            self.asymmetry(self._the_run_) # prepare asymmetry
-            fitargs, minuit_parameter_names = int2min()
-            # print('fitargs = {}\n minuit_parameter_names = {}'.format(fitargs,minuit_parameter_names))
-            _the_model_._load_data_(self.time,self.asymm,
-                                    int2_int(),self.alpha.value,
-                                    e=self.asyme) # pass data to model
-            level = 1
-            # save values save fit print summary
-            # self.mainwindow.selected_index=3
-            with self._output:
-                m = M(_the_model_._chisquare_,pedantic=False,forced_parameters=minuit_parameter_names,print_level=level,**fitargs)
-                m.migrad()
-            pars = [m.fitarg[name] for name in minuit_parameter_names]
-            t,f = self.rebin(self.time,_the_model_._add_(self.time,*pars))
-            t,y,ey = self.rebin(self.time,self.asymm,e=self.asyme)
-            self.mainwindow.selected_index=4
-            with self._plot:
-                fig,ax = P.subplots(2,1,figsize=(6,4),sharex = True, gridspec_kw = {'height_ratios':[2, 1]})
-                ax[0].errorbar(t,y,yerr=ey,fmt='ro',elinewidth=1.0,ms=2.0)
-                ax[0].plot(self.time,_the_model_._add_(self.time,*pars),'g-',lw=1.0)
-                ax[1].plot(t,y-f,'r-',lw=1.0)
-                ax[0].set_ylabel('Asymmetry')
-                ax[1].set_ylabel('Residues')
-                ax[1].set_xlabel(r'Time [$\mu$s]')
-                ax[0].set_title(self.title.value)
-                P.subplots_adjust(wspace=0.07)
-                P.show()
-            save_fit()
+#        from tkinter import Toplevel
+#        from matplotlib.backends.backend_tkagg import NavigationToolbar2TkAgg as Navig
+#        from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg as FigureCanvas
+
+            if not self._the_run_:
+                self.mainwindow.selected_index=3
+                with self._output_:
+                     print('No run loaded yet! Load one first (select suite tab).')
+                return    
+            else:
+                self.asymmetry(self._the_run_) # prepare asymmetry
+                fitargs, minuit_parameter_names = int2min(return_names=True)
+                #with self._output_:                 
+                #    print('fitargs = {}\n minuit_parameter_names = {}'.format(fitargs,minuit_parameter_names))
+                #    print('int2_int()={}'.format(int2_int()))
+
+                _the_model_._load_data_(self.time,self.asymm,
+                                        int2_int(),self.alpha.value,
+                                        e=self.asyme) # pass data to model
+                level = 1
+                # save values save fit print summary
+                # self.mainwindow.selected_index=3
+                with self._output_:
+                    m = M(_the_model_._chisquare_,pedantic=False,forced_parameters=minuit_parameter_names,print_level=level,**fitargs)
+                    m.migrad()
+                pars = [m.fitarg[name] for name in minuit_parameter_names]
+                t,f = self.rebin(self.time,_the_model_._add_(self.time,*pars))
+                t,y,ey = self.rebin(self.time,self.asymm,e=self.asyme)
+                if not self.fig_fit: # not initialized yet
+                    self.fig_fit,self.ax_fit = P.subplots(2,2,figsize=(6,4),sharex = 'col', 
+                                 gridspec_kw = {'height_ratios':[3, 1],'width_ratios':[4,1]})
+                    self.fig_fit.canvas.set_window_title('Fit')
+                    self.fig_fit.subplots_adjust(hspace=0.05,top=0.90,bottom=0.12,right=0.97,wspace=0.08)
+                elif not P.fignum_exists(self.fig_fit.number):
+                    self.fig_fit,self.ax_fit = P.subplots(2,2,figsize=(6,4),sharex = 'col',
+                                 gridspec_kw = {'height_ratios':[3, 1],'width_ratios':[4,1]})
+                    self.fig_fit.canvas.set_window_title('Fit')
+                    self.fig_fit.subplots_adjust(hspace=0.05,top=0.90,bottom=0.12,right=0.97,wspace=0.08)
+                else:
+                    self.ax_fit[(0,0)].cla()
+                    self.ax_fit[(1,0)].cla()
+                    self.ax_fit[(1,1)].cla()
+                self.ax_fit[(0,0)].errorbar(t,y,yerr=ey,fmt='ro',elinewidth=1.0,ms=2.0)
+                yfit = _the_model_._add_(self.time,*pars)
+                self.ax_fit[(0,0)].plot(self.time,yfit,'g-',lw=1.0)
+                self.ax_fit[(0,0)].set_xlim([0, max(self.time)])
+                self.ax_fit[(1,0)].plot(t,y-f,'r-',lw=1.0)
+                self.ax_fit[(1,0)].plot(t,y-y,'g-',lw=1.0)
+                self.ax_fit[(0,0)].set_title(self.title.value)
+                self.ax_fit[(0,0)].set_ylabel('Asymmetry')
+                self.ax_fit[(1,0)].set_ylabel('Residues')
+                self.ax_fit[(1,0)].set_xlabel(r'Time [$\mu$s]')
+                # chi2 distribution
+                nu = len(self.time) - len(pars) # degrees of freedom
+                chi2 = m.fval/nu # reduced chisquare
+                xbin = np.linspace(-5.5,5.5,12)
+                self.ax_fit[(1,1)].hist((self.asymm-yfit)/self.asyme,xbin,rwidth=0.9,fc='b',alpha=0.2)
+                xh = np.linspace(-5.5,5.5,23)
+                yh = nu*(norm.cdf(xh+1)-norm.cdf(xh))
+                self.ax_fit[(1,1)].plot(xh+0.5,yh,'r-')
+                self.ax_fit[(1,1)].set_xlabel("$\sigma$")
+                self.ax_fit[(1,1)].set_yticklabels(['']*len(self.ax_fit[(1,1)].get_yticks()))    
+                self.ax_fit[(1,1)].set_xlim([-5., 5.])
+                # chi2 values and limits
+                mm = round(nu/4)
+                k = np.linspace(-mm,mm,2*mm+1)
+                cc = gammainc((k+nu)/2,nu/2) # muchi2cdf(x,nu) = gammainc(x/2, nu/2);
+                lc = 1+k[min(list(np.where((cc<0.95)&(cc>0.05)))[0])]/nu
+                hc = 1+k[max(list(np.where((cc<0.95)&(cc>0.05)))[0])]/nu
+                string = '$\chi^2_r=$ {:.4f}\n ({:.2f}-{:.2f})\n$\chi^2_c=$ {:.4f}\n{} dof'.format(chi2,lc,hc,gammainc(chi2/2,nu/2),nu)
+                self.ax_fit[(0,1)].text(-4,0.13,string)
+                self.ax_fit[(0,1)].axis('off')
+
+                self.fig_fit.canvas.manager.window.tkraise()
+
+                P.draw()
+                save_fit(m.fitarg)
          
         def on_flag_changed(change):
             '''
@@ -694,19 +817,7 @@ class mugui(object):
             dscr = change['owner'].description # description is three chars ('val','fun','flg') followed by an integer nint
                                                # iterable in range(ntot), total number of internal parameters
             n = int(dscr[4:]) # description='flag'+str(nint), skip 'flag'
-            function[n].disabled=False if change['new']=='=' else True
-
-        def on_alpha_changed(change):
-            '''
-            observe response of fit tab widgets:
-            validate float        
-            '''
-            string = change['owner'].value # description is three chars ('val','fun','flg') followed by an integer nint
-                                               # iterable in range(ntot), total number of internal parameters
-            try: 
-                float(string)
-            except:
-                change['owner'].value = '{:.4f}'.format(alpha0)
+            self.function[n].disabled=False if change['new']=='=' else True
 
         def on_function_changed(change):
             '''
@@ -717,7 +828,7 @@ class mugui(object):
                                                # iterable in range(ntot), total number of internal parameters
             n = int(dscr[4:]) # description='func'+str(nint), skip 'func'
             if not muvalid(change['new']):
-                function[n].value = ''     
+                self.function[n].value = ''     
   
         def on_group_changed(change):
             '''
@@ -732,19 +843,22 @@ class mugui(object):
                 if self.offset.value<0: # must be positive
                    self.offset.value = self.offset0 # standard value
 
-        def on_loadmodel_changed(change):
+        def on_load_model(change):
             '''
             observe response of fit tab widgets:
             check that change['new'] is a valid model
             relaunch MuJPy.fit(change['new'])
             '''
             if checkvalidmodel(change['new']): # empty list is False, non empty list is True
+                try:
+                    del _the_model_
+                except:
+                    pass
                 self.fit(change['new']) # restart the gui with a new model
                 self.mainwindow.selected_index=2
-                self.gui
-                del _the_model_
             else:
                 loadmodel.value=''
+
 
         def on_parvalue_changed(change):
             '''
@@ -755,10 +869,12 @@ class mugui(object):
                                                # iterable in range(ntot), total number of internal parameters
             n = int(dscr[5:]) # description='value'+str(nint), skip 'func'
             try:
-                float(parvalue[n].value)
+                float(self.parvalue[n].value)
+                self.parvalue[n].background_color = "white"
             except:
-                parvalue[n].value = '' 
-  
+                self.parvalue[n].value = '0.0' 
+                self.parvalue[n].background_color = "mistyrose"
+ 
         def on_range(change):
             '''
             observe response of fit range widgets:
@@ -770,14 +886,28 @@ class mugui(object):
             if sum(self.derange(target=name))<0: # errors return (-1,-1),(-1,0),(0,-1) 
                exec('self.'+name+'.value = ""') # reset to expty text
 
-        def save_fit():
+        def path_file_dialog(path):
+            import tkinter
+            from tkinter import filedialog
+            import os
+            here = os.getcwd()
+            os.chdir(path)
+            tkinter.Tk().withdraw() # Close the root window
+            in_path = filedialog.askopenfilename()
+            os.chdir(here)
+            return in_path
+
+        def save_fit(fitargs=None):
             '''
             saves fit values such that load_fit can reproduce the same fit
             '''
             import dill as pickle
             import os
 
-            fitargs, minuit_parameter_names = int2min()
+            if not fitargs:
+                fitargs = int2min() # returns dashboard fitargs only 
+            # whereas save_fit(m.fitarg) saves fit results
+            # from now on fitags exist and are either fit results, if any, or dashboard values
             _int = int2_int()
             version = self.version.value
             strgrp = self.group[0].value.replace(',','_')+'-'+self.group[1].value.replace(',','_')
@@ -790,16 +920,15 @@ class mugui(object):
             fit_dict = {}
             for k,key in enumerate(names):
                fit_dict[names[k]] = eval(key) # key:value
-            _parvalue = min2int(fitargs)
-            for k in range(len(self.model_components)):
-               for k in range(nint):
-                   fit_dict['_parvalue['+str(k)+']'] = _parvalue[k] # fit result
-                   fit_dict['_flag['+str(k)+    ']'] = flag[k].value # from fit tab
-                   fit_dict['_function['+str(k)+']'] = function[k].value # from fit tab
+            _parvalue = min2int(fitargs) # either fit or dashboard
+            for k in range(nint+1):
+                fit_dict['_parvalue['+str(k)+']'] = _parvalue[k] # either fit or dashboard
+                fit_dict['_flag['+str(k)+    ']'] = self.flag[k].value # from fit tab
+                fit_dict['_function['+str(k)+']'] = self.function[k].value # from fit tab
             with open(path,'wb') as f:
                 pickle.dump(fit_dict, f) 
             self.mainwindow.selected_index=3
-            with self._output:
+            with self._output_:
                 print('Saved {}'.format(path))
 
         def set_group():
@@ -828,9 +957,20 @@ class mugui(object):
                 s = s[:-1]
                 self.group[k].value = s
 
+        def translate(nint,lmin):
+            string = self.function[nint].value
+            # search for integers between '[' and ']'
+            start = [i+1 for i in  findall('[',string)]
+            stop = [i for i in  findall(']',string)]
+            nints = [string[i:j] for (i,j) in zip(start,stop)]
+            nmins = [lmin[int(string[i:j])] for (i,j) in zip(start,stop)]
+            for lstr,m in zip(nints,nmins):
+                string = string.replace(lstr,str(m))
+            return string
+
         ######### here starts the fit method of MuGui
         _available_components_() # creates tuple self.available_components automagically from mucomponents
-        _the_model_ = mumodel() # local instance, need a new one each time a fit tab is reloaded (on_load_model)
+        _the_model_ = mumodel() # local instance, need a new one each time a fit tab is reloaded (on_loadmodel)
         try:
             alpha0 = self.alpha.value
         except:
@@ -839,6 +979,10 @@ class mugui(object):
             self.offset0 = self.offset.value
         except:
             self.offset0 = 7 # generic initial value 
+        loadbutton = Button(description='Load fit',layout=Layout(width='10%'))
+        loadbutton.style.button_color = 'lightgreen'
+        loadbutton.on_click(load_fit)
+
         self.alpha = FloatText(description='alpha',value='{:.4f}'.format(alpha0),
                                 layout=Layout(width='20%'),continuous_update=False) # self.alpha.value
         self.alpha.observe(on_alpha_changed,'value')
@@ -847,12 +991,10 @@ class mugui(object):
         # initialized to 7, only input is from an IntText, integer value, or saved and reloaded from mujpy_setup.pkl
         self.alpha.style.description_width='40%' 
         self.offset.style.description_width='50%' 
-        self.offset.observe(on_integer,'value') # check validity, must be positive
-
         # group and grouping: csv shorthand 
-        self.group = [Text(description='forward',layout=Layout(width='27%'),
+        self.group = [Text(description='forward',layout=Layout(width='25%'),
                                     continuous_update=False),
-                      Text(description='backward',layout=Layout(width='27%'),
+                      Text(description='backward',layout=Layout(width='25%'),
                                     continuous_update=False)]
         set_group() # inserts shorthand from self.grouping into seld.group[k].value, k=0,1
         self.group[0].observe(on_group_changed,'value')
@@ -862,7 +1004,7 @@ class mugui(object):
         model = Text(description = '', layout=Layout(width='10%'), disabled = True) # this is static, empty description, next to loadmodel
         model.value = model_in
         loadmodel = Text(description='loadmodel',layout=Layout(width='19%'),continuous_update=False) # this is where one can input a new model name
-        loadmodel.observe(on_loadmodel_changed,'value')
+        loadmodel.observe(on_load_model,'value')
         loadmodel.style.description_width='35%'
         self.version = IntText(description='version',layout=Layout(width='11%',indent=False)) # version.value is an int
         self.version.style.description_width='43%'
@@ -892,7 +1034,7 @@ class mugui(object):
                                                                 plot_button, 
                                                                 self.plot_range,
                                                                 update_button])  #
-        alphaframe_handle = HBox(description = 'Alpha', children=[self.alpha,
+        alphaframe_handle = HBox(description = 'Alpha', children=[loadbutton,self.alpha,
                                                                    self.offset,
                                                                    self.group[0],
                                                                    self.group[1]])  # 
@@ -910,7 +1052,7 @@ class mugui(object):
         nint = -1 # internal parameter count, each widget its unique name
         ntot = np.array([len(self.model_components[k]['pars']) 
                          for k in range(len(self.model_components))]).sum()
-        parvalue, flag, function = [], [], [] # lists, index runs according to internal parameter count nint
+        self.parvalue, self.flag, self.function = [], [], [] # lists, index runs according to internal parameter count nint
         self.compar = {} # dictionary: key nint corresponds to a list of two values, c (int index of component) and p (int index of parameter)
                 # use: self.compar[nint] is a list of two integers, the component index k and its parameter index j
 
@@ -927,47 +1069,47 @@ class mugui(object):
                 nint += 1      # all parameters are internal parameters, first is pythonically zero 
                 self.compar.update({nint:[k,j]}) # stores the correspondence between nint and component,parameter
                 nintlabel_handle = Text(value=str(nint),layout=Layout(width='10%'),disabled=True)
-                parname_handle = Text(value=self.model_components[k]['pars'][j]['name'],layout=Layout(width='15%'),disabled=True)
+                parname_handle = Text(value=self.model_components[k]['pars'][j]['name'],layout=Layout(width='22%'),disabled=True)
                 # parname can be overwritten, not important to store
 
-                parvalue.append(Text(value='{:.4}'.format(self.model_components[k]['pars'][j]['value']),
-                                     layout=Layout(width='20%'),description='value'+str(nint),continuous_update=False))
-                parvalue[nint].style.description_width='0%'
+                self.parvalue.append(Text(value='{:.4}'.format(self.model_components[k]['pars'][j]['value']),
+                                     layout=Layout(width='18%'),description='value'+str(nint),continuous_update=False))
+                self.parvalue[nint].style.description_width='0%'
                 try:
-                    parvalue[nint].value = _parvalue[nint]
+                    self.parvalue[nint].value = _parvalue[nint]
                 except:
                     pass
                 # parvalue handle must be unique and stored at position nint, it will provide the initial guess for the fit
 
-                function.append(Text(value=self.model_components[k]['pars'][j]['function'],
-                                     layout=Layout(width='38%'),description='func'+str(nint),continuous_update=False))
-                function[nint].style.description_width='0%'
+                self.function.append(Text(value=self.model_components[k]['pars'][j]['function'],
+                                     layout=Layout(width='33%'),description='func'+str(nint),continuous_update=False))
+                self.function[nint].style.description_width='0%'
                 try:
-                    function[nint].value = _function[nint]
+                    self.function[nint].value = _function[nint]
                 except:
                     pass
                 # function handle must be unique and stored at position nint, it will provide (eventually) the nonlinear relation 
 
                 fdis = False if self.model_components[k]['pars'][j]['flag']=='=' else True 
-                function[nint].disabled = fdis # enabled only if flag='='
-                flag.append(Dropdown(options=['~','!','='], 
+                self.function[nint].disabled = fdis # enabled only if flag='='
+                self.flag.append(Dropdown(options=['~','!','='], 
                                      value=self.model_components[k]['pars'][j]['flag'],
                                      layout=Layout(width='10%'),description='flag'+str(nint)))
-                flag[nint].style.description_width='0%'
+                self.flag[nint].style.description_width='0%'
                 try:
-                    flag[nint].value = _flag[nint]
+                    self.flag[nint].value = _flag[nint]
                 except:
                     pass
                  # flag handle must be unique and stored at position nint, it will provide (eventually) the nonlinear relation to be evaluated
  
                 # now put this set of parameter widgets for the new parameter inside an HBox
-                par_handle = HBox([nintlabel_handle, parname_handle, parvalue[nint], flag[nint], function[nint]])
+                par_handle = HBox([nintlabel_handle, parname_handle, self.parvalue[nint], self.flag[nint], self.function[nint]])
                            # handle to an HBox of a list of handles; notice that parvalue, flag and function are lists of handles
                 
                 # now make value flag and function active 
-                parvalue[nint].observe(on_parvalue_changed,'value')
-                flag[nint].observe(on_flag_changed,'value') # when flag[nint] is modified, function[nint] is z(de)activated
-                function[nint].observe(on_function_changed,'value') # when function[nint] is modified, it is validated
+                self.parvalue[nint].observe(on_parvalue_changed,'value')
+                self.flag[nint].observe(on_flag_changed,'value') # when flag[nint] is modified, function[nint] is z(de)activated
+                self.function[nint].observe(on_function_changed,'value') # when function[nint] is modified, it is validated
 
                 componentframe_list.append(par_handle) # add par widget to the frame list
 
@@ -995,8 +1137,8 @@ class mugui(object):
         '''
         from ipywidgets import Output, HBox, Layout 
                      # Output(layout={'height': '100px', 'overflow_y': 'auto', 'overflow_x': 'auto'})
-        self._output = Output(layout={'height': '200px','width':'100%','overflow_y':'auto','overflow_x':'auto'})
-        _output_box = HBox([self._output],layout=Layout(width='100%')) # x works y does scroll
+        self._output_ = Output(layout={'height': '300px','width':'100%','overflow_y':'auto','overflow_x':'auto'})
+        _output_box = HBox([self._output_],layout=Layout(width='100%')) # x works y does scroll
         self.mainwindow.children[3].children = [_output_box] 
                              # add the list of widget handles as the fourth tab, output
 
@@ -1110,7 +1252,7 @@ class mugui(object):
             with open(path,'wb') as f:
                 pickle.dump(setup_dict, f) # according to __getstate__()
             self.mainwindow.selected_index=3
-            with self._output:
+            with self._output_:
                 print('Saved {}'.format(os.path.join(self.__startuppath__,'mujpy_setup.pkl')))
 
         def on_paths_changed(change):
@@ -1171,7 +1313,7 @@ class mugui(object):
 
             if not self._the_run_:
                 self.mainwindow.selected_index=3
-                with self._output:
+                with self._output_:
                      print('No run loaded yet! Load one first (select suite tab).')
                 return    
             else:
@@ -1218,20 +1360,24 @@ class mugui(object):
                             if self.first_t0plot:
                                 self.axt0[divmod(detector,3)].plot(x[n1:n2],y[n1:n2],'.')
                                 self.axt0[divmod(detector,3)].plot(x3,mm.f(x3,A,X0,Dx,Ak1,Ak2))
-                                self.prompt_fit_text[detector] = self.axt0[divmod(detector,3)].text(npeaks[detector]
-                                                                 +10,0.8*max(y),'Det #{}'.format(detector+1))
+                                x_text,y_text = npeaks[detector]+10,0.8*max(y)
+                                self.prompt_fit_text[detector] = self.axt0[divmod(detector,3)].text(x_text,y_text,'Det #{}\nt0={}bin\n$\delta$t0={:.2f}'.format
+                                                                          (detector+1,self.nt0[detector],self.dt0[detector]))
+
                             else:
                                 self.axt0[divmod(detector,3)].lines[0].set_ydata(y[n1:n2])
                                 self.axt0[divmod(detector,3)].lines[1].set_ydata(mm.f(x3,A,X0,Dx,Ak1,Ak2))
-                                x_text = self.prompt_fit_text[detector].get_position()[0]
-                                self.prompt_fit_text[detector].set_position((x_text,0.8*max(y)))
+                                x_text,y_text =  npeaks[detector]+10,0.8*max(y)
+                                self.prompt_fit_text[detector].set_position((x_text,y_text))
+                                self.prompt_fit_text[detector].set_text('Det #{}\nt0={}bin\n$\delta$t0={:.2f}'.format
+                                                                       (detector+1,self.nt0[detector],self.dt0[detector]))
                                 self.axt0[divmod(detector,3)].relim() # find new dataLim
                                 self.axt0[divmod(detector,3)].autoscale_view()
 
             if mplot:
                 if self.first_t0plot:
                     P.show()
-                    self.first_t0plot = False
+                    self.first_t0plot = False              
                 else:
                     P.draw() # TypeError: draw_wrapper() missing 1 required positional argument: 'renderer'
 
@@ -1249,16 +1395,16 @@ class mugui(object):
             self.dt0 = x0-self.nt0 # fraction of bin, nd.array of shape run.get_numberHisto_int() 
             self.lastbin = self.nt0.min() - self.prepostpk[0].value # nd.array of shape run.get_numberHisto_int() 
                                                    # refresh, they may be slightly adjusted by the fit
-            self.t0plot_results.clear_output()
+            # self.t0plot_results.clear_output()
 
-            with self.t0plot_results:
-                print('\n\n\n\nRun: {}'.format(self._the_run_.get_runNumber_int()))
-                print(' Bin nt0')
-                for detector in range(self._the_run_.get_numberHisto_int()):
-                    print('#{}: {}'.format(detector,self.nt0[detector]))
-                print('\n\n dt0 (bins)')
-                for detector in range(self._the_run_.get_numberHisto_int()):
-                    print('#{}: {:.2f}'.format(detector,self.dt0[detector]))
+           #with self.t0plot_results:
+            #    print('\n\n\n\nRun: {}'.format(self._the_run_.get_runNumber_int()))
+            #    print(' Bin nt0')
+            #    for detector in range(self._the_run_.get_numberHisto_int()):
+            #        print('#{}: {}'.format(detector,self.nt0[detector]))
+            #    print('\n\n dt0 (bins)')
+            #    for detector in range(self._the_run_.get_numberHisto_int()):
+            #        print('#{}: {:.2f}'.format(detector,self.dt0[detector]))
             ##################################################################################################
 
         from ipywidgets import HBox, Layout, VBox, Text, IntText, Checkbox, Button, Output, Accordion
@@ -1346,7 +1492,7 @@ class mugui(object):
             else:     # should be False if self.offset = [], as set in self.__init__()
                 offset_bin = self.offset0  # temporary parking
            #       self.nt0 roughly set by suite model on_loads_changed
-           #       with self._output:
+           #       with self._output_:
            #            print('offset = {}, nt0 = {}'.format(offset_bin,self.nt0))
             for detector in range(self._the_run_.get_numberHisto_int()):
                 n1 = offset_bin+self.nt0[detector] 
@@ -1402,7 +1548,7 @@ class mugui(object):
                                     # data path + filespec + padded run rumber + extension)
                 if self._the_run_.read(path_and_filename) == 1: # error condition, set by musr2py.cpp
                     self.mainwindow.selected_index=3
-                    with self._output:
+                    with self._output_:
                         print ('\nFile {} not read. Check paths, filespecs and run rumber on setup tab'.
                                 format(path_and_filename))
                 else:
