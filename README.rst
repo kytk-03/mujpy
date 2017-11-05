@@ -19,9 +19,8 @@ Linux instructions for the time being. VAlid on WIN10, that has a linux shell
 * Start jupyter:
    jupyter notebook
 * In the first cell type
->>>%matplotlib notebook 
+>>>%matplotlib
 * Add a cell and write
    from mujpy.mugui import mugui
    MuJPy = mugui()
-   MuJPy.start()
 * Run the cells
