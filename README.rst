@@ -9,7 +9,8 @@ Released under the MIT licence.
 Linux instructions for the time being. VAlid on WIN10, that has a linux shell
 * Use virtualenv (see virtualenv.pypa.io).
 * Make sure you have python(3) and jupyter, or install them (see jupyter.readthedoc.io).
-* Install mujpy. Download from https://github.com/RDeRenzi/mujpy, unzip into the directory of your choice,
+* Install mujpy. Download from https://github.com/RDeRenzi/mujpy, unzip into the directory of your choice::
+
    cd mujpy/mujpy/musr2py
    make
    sudo make install
