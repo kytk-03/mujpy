@@ -51,12 +51,13 @@ class mugui(object):
         self.first_t0plot = True
         self.lastfit = [] # initialize
         self._global_fit_ = False # 
-        # mujpy paths
+# mujpy paths
         self.__path__ = os.path.dirname(MuJPyName)
         self.__logopath__ = os.path.join(self.__path__,"logo")
         self.__startuppath__ = os.getcwd() # working directory, in which, in case, to find mujpy_setup.pkl 
+# mujpy layout
+        self.button_color = 'lightgreen'
 
-        self.binning = 100
         #####################################
         # actually produces the gui interface
         #####################################
@@ -65,13 +66,15 @@ class mugui(object):
         self.setup()
         self.suite()
         self.fit()
-
         self.output() # this calls output(self) that defines self._output_
+        self.fft()
 
         #####################################
         # static figures 
-        #####################################
+        ##########################        self.fig_fit = [] # initialize to false, it will become a pyplot.subplots instance 
+###########
         self.fig_fit = [] # initialize to false, it will become a pyplot.subplots instance 
+        self.fig_fft = [] # initialize to false, it will become a pyplot.subplots instance 
 #        self.graph_fit = Toplevel()
 #        canvas_fit = FigureCanvas(self.fig_fit, master=self.graph_fit)
 #        canvas_fit.get_tk_widget().pack()
@@ -91,6 +94,19 @@ class mugui(object):
                 print(str(wheremI)) 
         except:
                 print('Python test script')
+
+        def _eval(string):
+            '''
+            yes, I know eval is evil, but
+            mujpy users with jupyter have already full control
+            of the machine, hence I do not care!
+            **** (UNUSED!) *****
+            BTW exec is used even by python for good: see input!
+            '''
+            try: 
+                return eval(string)
+            except Exception as e: 
+                print(e)
 
 ##########################
 # ABOUT
@@ -256,7 +272,7 @@ class mugui(object):
         #
         self.gui = VBox(description='whole',layout=Layout(width='100%'))
         self.gui.children = [titlelogowindow, self.mainwindow]
-        
+
 ##########################
 # FFT
 ##########################
@@ -265,6 +281,322 @@ class mugui(object):
         fft tab of mugui
         '''
 
+        def on_fft_request(b):
+            '''
+            perform fft and plot 
+            two options: (partial) residues or full asymmetry
+            two modes: real amplitude or power 
+            '''
+            import numpy as np
+            from mujpy.aux.derange import derange            
+            import matplotlib.pyplot as P
+
+            # retrieve self._the_model_, pars, 
+            #          fit_start,fit_stop=rangetup[0],
+            #          with rangetup[1]rangetup = derange(self.fit_range.value), 
+
+            if not self.lastfit:
+                with self._output_:
+                    self.mainwindow.selected_index=3
+                    print('No fit yet. Please first produce a fit attempt.')
+                return
+            pars = [self.lastfit.fitarg[name] for name in self.minuit_parameter_names]
+            dt = self.time[1]-self.time[0]
+            rangetup = derange(self.fit_range.value)
+            fit_range = range(int(rangetup[0]),int(rangetup[1]))
+            j = int(rangetup[0]) # fit_start, also equal to self.time[fit_start]/dt
+            l = int(rangetup[1])-j # fitstop - fit_start, dimension of data
+            df = 1/(dt*l)
+            n = 2*l # not a power of 2, nut surely even
+            filter_apo = np.exp(-(dt*np.linspace(0,n-1,n)*float(fft_filter.value))**3) # hypergaussian filter 
+                                             # is applied as if first good bin were t=0
+            filter_apo = filter_apo/sum(filter_apo)/dt # approx normalization
+            # try hypergauss n=3, varying exponent
+            ey = np.hstack((self.asyme[fit_range],np.zeros(n-l))) #  zero padded errors
+            ey = ey*filter_apo                              # filtered errors
+            dfa = 1/n/dt         # apparent frequency resolution
+            y = self.asymm[fit_range]
+            yf = self._the_model_._add_(self.time[fit_range],*pars) # [best] fit function
+
+            if residues_or_asymmetry.value == 'Residues': 
+                fft_components = []
+                for j in range(len(self.model_components)):
+                    fft_components.append(self.fftcheck[j].value) # from the gui FFT checkboxes
+                self._the_model_._fft_init(fft_components)
+                y -=  self._the_model_._fft_add_(self.time[fit_range],*pars) # partial residues
+
+            y = np.hstack((y,np.zeros(n-l))) #  zero padded  
+            yf = np.hstack((yf,np.zeros(n-l))) #  zero padded
+            y = y*filter_apo  # filtered 
+            yf = yf*filter_apo  # filtered 
+
+            fft_amplitude = np.fft.fft(y)  # amplitudes (complex)
+            fftf_amplitude = np.fft.fft(yf)  # amplitudes (complex)
+            nf = np.hstack((np.linspace(0,l,l+1,dtype=int), np.linspace(-l+1,-1,l-2,dtype=int)))
+            f = nf*dfa  # positive frequencies
+            rangetup = derange(fft_range.value) # translate freq range into bins
+            fstart, fstop = float(rangetup[0]), float(rangetup[1]) 
+            start, stop = int(round(fstart/dfa)), int(round(fstop/dfa))
+            f = f[start:stop];
+            #with self._output_:
+            #    print("start={},stop={},f={}".format(start, stop, f))
+            if self.fig_fft: # has been set to a handle once
+                self.fig_fft.clf()
+                self.fig_fft,self.ax_fft = P.subplots(num=self.fig_fft.number)
+            else: # handle does not exist, make one
+                self.fig_fft,self.ax_fft = P.subplots(figsize=(6,4))
+                self.fig_fft.canvas.set_window_title('FFT')
+            self.ax_fft.set_xlabel('Frequency [MHz]')
+            if real_or_power.value=='Real part':
+                # APPLY PHASE CORRECTION
+                # try acme
+                with self._output_:
+                    fftf_amplitude, p0, p1 = autops(fftf_amplitude,'acme')
+                fft_amplitude = ps(fft_amplitude, p0=p0 , p1=p1)
+
+                self.ax_fft.plot(f,fft_amplitude.real[start:stop],'ro',ms=2)
+                self.ax_fft.plot(f,fftf_amplitude.real[start:stop],'g-',lw=1)
+                if residues_or_asymmetry.value == 'Residues':
+                    self.ax_fft.set_ylabel('FFT Amplitude (Residues/Fit)')
+                else:
+                    self.ax_fft.set_ylabel('FFT Amplitude (Asymmetry/Fit)')
+            else:
+                fft_power = fft_amplitude.real[start:stop]**2+fft_amplitude.imag[start:stop]**2
+                fftf_power = fftf_amplitude.real[start:stop]**2+fftf_amplitude.imag[start:stop]**2
+                self.ax_fft.plot(f,fft_power,'ro',ms=2)
+                self.ax_fft.plot(f,fftf_power,'g-',lw=1)
+                if residues_or_asymmetry.value == 'Residues':
+                    self.ax_fft.set_ylabel('FFT Power (Residues/Fit)')
+                else:
+                    self.ax_fft.set_ylabel('FFT Power (Asymmetry/Fit)')
+            self.fig_fft.canvas.manager.window.tkraise()
+
+            P.draw()
+
+
+    # noise in the FFT: data, tn, yn with standard deviations eyn 
+    # FFT ampli am=sum_n yn exp(i wm tn) 
+    # FFT power ap = (sum_n yn exp(i  wn tn))^2
+    # => eam^2=(sum_n |exp(i wm tn)|^2 eyn^2 = sum_n eyn^2 uniform
+    # ea is a distance, hence the radius of one standard deviation
+    # both ai and ar have the same sigma=ea
+    # hence ap has sigma=sqrt(2)*ea 
+#               ea=sqrt(sum(ey.^2))*ones(size(ai)); % noise level
+
+        def on_filter_changed(change):
+            '''
+            observe response of fit tab widgets:
+            validate float        
+            '''
+            string = change['owner'].value # description is three chars ('val','fun','flg') followed by an integer nint
+                                               # iterable in range(ntot), total number of internal parameters
+            try: 
+                float(string)
+            except:
+                change['owner'].value = '{:.4f}'.format(filter0)
+
+        def on_range(change):
+            '''
+            observe response of fit range widgets:
+            check for validity of function syntax
+            '''
+            from mujpy.aux.derange import derange
+            returnedtup = derange(fft_range.value) # errors return (-1,-1),(-1,0),(0,-1), good values are all positive
+            if sum(returnedtup)<0:
+                fft_range.background_color = "mistyrose"
+                fft_range.value = fft_range0
+            else:
+                fft_range.background_color = "white"
+
+        def autops(data, fn, p0=0.0, p1=0.0):
+            """
+            Automated phase correction from NMRglue by https://github.com/jjhelmus
+            These functions provide support for automatic phasing of NMR data. 
+            ----------
+            Automatic linear phase correction
+            Parameters
+            ----------
+            data : ndarray
+                Array of NMR data.
+            fn : str or function
+                Algorithm to use for phase scoring. Built in functions can be
+                specified by one of the following strings: "acme", "peak_minima"
+            p0 : float
+                Initial zero order phase in degrees.
+            p1 : float
+                Initial first order phase in degrees.
+            Returns
+            -------
+            ndata : ndarray
+                Phased NMR data.
+            """
+            import numpy as np
+            import scipy.optimize
+
+            if not callable(fn):
+                fn = {
+                    'peak_minima': _ps_peak_minima_score,
+                    'acme': _ps_acme_score,
+                }[fn]
+            opt = [p0, p1]
+            opt = scipy.optimize.fmin(fn, x0=opt, args=(data, ))
+            return ps(data, p0=opt[0], p1=opt[1]), opt[0], opt[1]
+
+
+        def _ps_acme_score(ph, data):
+            """
+            Phase correction using ACME algorithm by Chen Li et al.
+            Journal of Magnetic Resonance 158 (2002) 164-168
+            Parameters
+            ----------
+            pd : tuple
+                Current p0 and p1 values
+            data : ndarray
+                Array of NMR data.
+            Returns
+            -------
+            score : float
+                Value of the objective function (phase score)
+            """
+            import numpy as np
+
+            stepsize = 1
+
+            phc0, phc1 = ph
+
+            s0 = ps(data, p0=phc0, p1=phc1)
+            data = np.real(s0)
+
+            # Calculation of first derivatives
+            ds1 = np.abs((data[1:]-data[:-1]) / (stepsize*2))
+            p1 = ds1 / np.sum(ds1)
+
+            # Calculation of entropy
+            p1[p1 == 0] = 1
+
+            h1 = -p1 * np.log(p1)
+            h1s = np.sum(h1)
+
+            # Calculation of penalty
+            pfun = 0.0
+            as_ = data - np.abs(data)
+            sumas = np.sum(as_)
+
+            if sumas < 0:
+                pfun = pfun + np.sum((as_/2) ** 2)
+
+            p = 1000 * pfun
+
+            return h1s + p
+
+
+        def _ps_peak_minima_score(ph, data):
+            """
+            Phase correction using simple minima-minimisation around highest peak
+            This is a naive approach but is quick and often achieves reasonable
+            results.  The optimisation is performed by finding the highest peak in the
+            spectra (e.g. TMSP) and then attempting to reduce minima surrounding it.
+            Parameters
+            ----------
+            pd : tuple
+                Current p0 and p1 values
+            data : ndarray
+                Array of NMR data.
+            Returns
+            -------
+            score : float
+                Value of the objective function (phase score)
+            """
+
+            phc0, phc1 = ph
+
+            s0 = ps(data, p0=phc0, p1=phc1)
+            data = np.real(s0)
+
+            i = np.argmax(data)
+            mina = np.min(data[i-100:i])
+            minb = np.min(data[i:i+100])
+
+            return np.abs(mina - minb)
+
+        def ps(data, p0=0.0, p1=0.0, inv=False):
+            """
+            Linear phase correction
+            Parameters
+            ----------
+            data : ndarray
+                Array of NMR data.
+            p0 : float
+                Zero order phase in degrees.
+            p1 : float
+                First order phase in degrees.
+            inv : bool, optional
+                True for inverse phase correction
+            Returns
+            -------
+            ndata : ndarray
+                Phased NMR data.
+            """
+            import numpy as np
+
+            p0 = p0 * np.pi / 180.  # convert to radians
+            p1 = p1 * np.pi / 180.
+            size = data.shape[-1]
+            apod = np.exp(1.0j * (p0 + (p1 * np.arange(size) / size))).astype(data.dtype)
+            if inv:
+                apod = 1 / apod
+            return apod * data
+
+        # begins fft gui
+        import numpy as np
+        from ipywidgets import HBox, Layout, Button, FloatText, Text, Dropdown, Checkbox
+
+        # must inherit/retrieve self._the_model_, pars, fit_range = range(fit_start,fit_stop)
+        # layout a gui to further retrieve  
+        # fft_range (MHz), lb (us-1), real_amplitude (True/False) if False then power, autophase (True/False)
+
+        # Layout gui
+        fft_button = Button(description='Do FFT',layout=Layout(width='12%'))
+        fft_button.style.button_color = self.button_color
+        fft_button.on_click(on_fft_request)
+
+        filter0 = 1.
+        fft_filter = Text(description='Filter ($\mu s^{-1}$)',
+                               value='{:.4f}'.format(filter0),
+                               layout=Layout(width='20%'),
+                               continuous_update=False) # self.filter.value
+        fft_filter.observe(on_filter_changed,'value')
+
+        fft_range0 = '0,50'
+        fft_range = Text(description='fit range\nstart,stop\n  (MHz)',
+                         value=fft_range0,
+                         layout=Layout(width='28%'),
+                         continuous_update=False)
+        fft_range.style.description_width='60%'
+        fft_range.observe(on_range,'value')
+
+        real_or_power = Dropdown(options=['Real part','Power'], 
+                                 value='Real part',
+                                 layout=Layout(width='12%'))
+
+        residues_or_asymmetry = Dropdown(options=['Residues','Asymmetry'], 
+                                         value='Residues',
+                                         layout=Layout(width='13%'))
+
+        autophase = Checkbox(description='Autophase',
+                             value=True,
+                             layout=Layout(width='15%'))
+        autophase.style.description_width='10%'
+
+        fft_frame_handle = HBox(description='FFT_bar',children=[fft_button,
+                                                                fft_filter,
+                                                                fft_range,
+                                                                real_or_power,
+                                                                residues_or_asymmetry,
+                                                                autophase])       
+        # now collect the handles of the three horizontal frames to the main fit window 
+        self.mainwindow.children[4].children = [fft_frame_handle] 
+                             # add the list of widget handles as the third tab, fit
 
 ##########################
 # FIT
@@ -280,18 +612,18 @@ class mugui(object):
              to select parameters value, fix, function, fft subtract check
         '''
 # the calculation is performed in independent class mucomponents
-# the methods are "inherited" by mugui by the reference instance _the_model_: 
+# the methods are "inherited" by mugui by the reference instance self._the_model_: 
 #     __init__ share initial attributes (constants) 
 #     _available_components_ automagical list of mucomponents 
 #     uses eval, evil but needed, integrate with muvalid and safetry
 #     clear_asymmetry: includes reset check when suite is implemented
-#     create_model: lay out _the_model_
+#     create_model: lay out self._the_model_
 #     delete_model: for a clean start
 #     help  
 #     load 
 #     rebin
 #     save cannot dill a class, rather a selected list of attributes, including:
-#       firstbin, lastbin, offset, nt0, dt0, _the_model_, _the_run_, _the_suite_, fitargs, ...
+#       firstbin, lastbin, offset, nt0, dt0, self._the_model_, _the_run_, _the_suite_, fitargs, ...
 #       purpose: load will provide a status ready for a new fit
 
 
@@ -342,17 +674,6 @@ class mugui(object):
                                                                 # transformed in tuple, immutable
             self.component_names = [self.available_components[i]['name'] 
                                     for i in range(len(self.available_components))] # list of just mucomponents method names
-
-        def _eval(string):
-            '''
-            yes, I know eval is evil, but
-            mujpy users with jupyter have already full control
-            of the machine, hence I do not care!
-            '''
-            try: 
-                return eval(string)
-            except Exception as e: 
-                print(e)
 
         def addcomponent(name,label):
             '''
@@ -518,15 +839,15 @@ class mugui(object):
                 else:
                     fit_start, fit_stop = returntup[0], returntup[1]
                 self.asymmetry(self._the_run_) # prepare asymmetry
-                fitargs, minuit_parameter_names = int2min(return_names=True)
+                fitargs, self.minuit_parameter_names = int2min(return_names=True)
 
                 if fit_pack==1:
-                    _the_model_._load_data_(self.time[fit_start:fit_stop],self.asymm[fit_start:fit_stop],
+                    self._the_model_._load_data_(self.time[fit_start:fit_stop],self.asymm[fit_start:fit_stop],
                                             int2_int(),self.alpha.value,
                                             e=self.asyme[fit_start:fit_stop]) # pass data to model
                 else: # rebin first
                     [time,asymm,asyme] = self.rebin(self.time,self.asymm,fit_pack,e=self.asyme)
-                    _the_model_._load_data_(time,asymm,int2_int(),self.alpha.value,e=asyme) # pass data to model
+                    self._the_model_._load_data_(time,asymm,int2_int(),self.alpha.value,e=asyme) # pass data to model
                     # with self._output_:
                     #    print('asyme={}'.format(asyme))
 ##############################
@@ -534,13 +855,16 @@ class mugui(object):
                 if fitflag:
                     level = 1
                     with self._output_:
-                        self.lastfit = M(_the_model_._chisquare_,pedantic=False,forced_parameters=minuit_parameter_names,print_level=level,**fitargs)
+                        self.lastfit = M(self._the_model_._chisquare_,
+                                         pedantic=False,
+                                         forced_parameters=self.minuit_parameter_names,
+                                         print_level=level,**fitargs)
                         self.lastfit.migrad()
 ##############################
                 if fitflag or (self.lastfit and not guess):
-                    pars = [self.lastfit.fitarg[name] for name in minuit_parameter_names]
+                    pars = [self.lastfit.fitarg[name] for name in self.minuit_parameter_names]
                 else: # not fitflag and (not self.lastfit or guess)
-                    pars = [fitargs[name] for name in minuit_parameter_names]                    
+                    pars = [fitargs[name] for name in self.minuit_parameter_names]                    
                 returntup = derange(target='plot')
                 plot_start, plot_stop = returntup[0], returntup[1]
                 if len(returntup)==4:
@@ -548,7 +872,7 @@ class mugui(object):
                     t,y,ey = self.time[plot_start:plot_stop],self.asymm[plot_start:plot_stop],self.asyme[plot_start:plot_stop] 
                              # data points unpacked, first part 
                     ncols, width_ratios = 3,[2,2,1]
-                    f = _the_model_._add_(self.time[plot_start:plot_stop],*pars) # version for residues
+                    f = self._the_model_._add_(self.time[plot_start:plot_stop],*pars) # version for residues
                 elif len(returntup)<=3:
                     plot_pack = 1 if len(returntup)==2 else returntup[2]             
                     t,y,ey = self.rebin(self.time[plot_start:plot_stop],
@@ -556,7 +880,7 @@ class mugui(object):
                                         e=self.asyme[plot_start:plot_stop]) # data points packed
                     ncols, width_ratios = 2,[4,1]
                     t,f = self.rebin(self.time[plot_start:plot_stop],
-                                    _the_model_._add_(self.time[plot_start:plot_stop],*pars)
+                                    self._the_model_._add_(self.time[plot_start:plot_stop],*pars)
                                    ,plot_pack) # version for residues
 
                 if self.fig_fit: # has been set to a handle once
@@ -576,11 +900,11 @@ class mugui(object):
                                            self.asymm[plot_stop:plot_last],plot_pack,
                                            e=self.asyme[plot_stop:plot_last])
                     tl,fl = self.rebin(self.time[plot_stop:plot_last],
-                                    _the_model_._add_(self.time[plot_stop:plot_last],*pars)
+                                    self._the_model_._add_(self.time[plot_stop:plot_last],*pars)
                                    ,plot_pack) # version for residues
                     self.ax_fit[(0,1)].errorbar(tl,yl,yerr=eyl,fmt='ro',elinewidth=1.0,ms=2.0)
                     self.ax_fit[(0,1)].plot(self.time[plot_stop:plot_last],
-                                      _the_model_._add_(self.time[plot_stop:plot_last],*pars),'g-',lw=1.0)
+                                      self._the_model_._add_(self.time[plot_stop:plot_last],*pars),'g-',lw=1.0)
                     self.ax_fit[(0,1)].set_xlim([self.time[plot_stop], self.time[plot_last]])
     # plot residues
                     self.ax_fit[(1,1)].plot(tl,yl-fl,'r-',lw=1.0)
@@ -588,7 +912,7 @@ class mugui(object):
 
                 self.ax_fit[(0,0)].errorbar(t,y,yerr=ey,fmt='ro',elinewidth=1.0,ms=2.0)
                 self.ax_fit[(0,0)].plot(self.time[plot_start:plot_stop],
-                                   _the_model_._add_(self.time[plot_start:plot_stop],*pars),'g-',lw=1.0)
+                                   self._the_model_._add_(self.time[plot_start:plot_stop],*pars),'g-',lw=1.0)
                 self.ax_fit[(0,0)].set_xlim([0, self.time[plot_stop]])
 # plot residues
                 self.ax_fit[(1,0)].plot(t,y-f,'r-',lw=1.0)
@@ -601,9 +925,9 @@ class mugui(object):
                 # chi2 distribution
                 nuchi2 = divmod(fit_stop-fit_start,fit_pack)[0] - len(pars) # degrees of freedom
                 nu = fit_stop-fit_start - len(pars) # degrees of freedom
-                chi2 = self.lastfit.fval/nuchi2 if fitflag else _the_model_._chisquare_(*pars)/nu # reduced chisquare
+                chi2 = self.lastfit.fval/nuchi2 if fitflag else self._the_model_._chisquare_(*pars)/nu # reduced chisquare
                 xbin = np.linspace(-5.5,5.5,12)
-                yfit = _the_model_._add_(self.time[fit_start:fit_stop],*pars)
+                yfit = self._the_model_._add_(self.time[fit_start:fit_stop],*pars)
                 self.ax_fit[(1,-1)].hist((self.asymm[fit_start:fit_stop]-yfit)/
                                       self.asyme[fit_start:fit_stop],xbin,
                                       rwidth=0.9,fc='b',alpha=0.2)
@@ -617,7 +941,7 @@ class mugui(object):
                     self.ax_fit[(0,1)].set_yticklabels(['']*len(self.ax_fit[(0,1)].get_yticks()))
                     self.ax_fit[(1,1)].set_yticklabels(['']*len(self.ax_fit[(1,1)].get_yticks()))
                     xbin = np.linspace(-5,5,11)
-                    yfit = _the_model_._add_(self.time[plot_start:plot_stop],*pars)
+                    yfit = self._the_model_._add_(self.time[plot_start:plot_stop],*pars)
                     relative_deviations = (self.asymm[plot_start:plot_stop]-yfit)/self.asyme[plot_start:plot_stop]
                     weights = (plot_last-plot_start)/(plot_stop-plot_start)*np.ones(plot_stop-plot_start)
                     earlyhist, bin_edges = np.histogram(relative_deviations,xbin,weights=weights)
@@ -705,8 +1029,8 @@ class mugui(object):
             _int = []
             for k in range(len(self.model_components)):  # scan the model
                 name = self.model_components[k]['name']
-                # print('name = {}, model = {}'.format(name,_the_model_))
-                bndmthd = _the_model_.__getattribute__(name)
+                # print('name = {}, model = {}'.format(name,self._the_model_))
+                bndmthd = self._the_model_.__getattribute__(name)
                 component_dict = {name:bndmthd} # the method
                 keys = []
                 for j in range(len(self.model_components[k]['pars'])): # 
@@ -749,7 +1073,7 @@ class mugui(object):
             nint = -1 # initialize
             nmin = -1 # initialize
             fitargs = {}
-            minuit_parameter_names = []
+            parameter_names = []
             for k in range(len(self.model_components)):  # scan the model
                 component_name = self.model_components[k]['name'] # name of component
                 keys = []
@@ -760,18 +1084,18 @@ class mugui(object):
                         nmin += 1
                         lmin[nmin] = nint # correspondence between nmin and nint, is it useful?
                         fitargs.update({par['name']:float(self.parvalue[nint].value)})
-                        minuit_parameter_names.append(par['name'])
+                        parameter_names.append(par['name'])
                         fitargs.update({'error_'+par['name']:float(par['error'])})
                         if not (par['limits'][0] == 0 and par['limits'][1] == 0):
                             fitargs.update({'limit_'+par['name']:par['limits']})
                     elif self.flag[nint].value == '!':
                         fitargs.update({par['name']:float(self.parvalue[nint].value)})
-                        minuit_parameter_names.append(par['name'])
+                        parameter_names.append(par['name'])
                         fitargs.update({'fix_'+par['name']:True})
 
             # print('fitargs= {}'.format(fitargs))
             if return_names:
-                return fitargs, tuple(minuit_parameter_names)
+                return fitargs, tuple(parameter_names)
             else:
                 return fitargs
 
@@ -789,7 +1113,8 @@ class mugui(object):
                 with open(path_and_filename,'rb') as f:
                     fit_dict = pickle.load(f)
                 try: 
-                    del _the_model_
+                    del self._the_model_
+                    self.lastfit = []
                 except:
                     pass
                 #with self._output_:
@@ -804,6 +1129,8 @@ class mugui(object):
                 self.alpha.value = fit_dict['self.alpha.value']
                 self.offset.value = fit_dict['self.offset.value']
                 nint = fit_dict['nint']
+                self.fit_range.value = fit_dict['self.fit_range.value']
+                self.plot_range.value = fit_dict['self.plot_range.value'] # keys
                 for k in range(nint+1):
                     self.parvalue[k].value = fit_dict['_parvalue['+str(k)+']']  
                     self.flag[k].value = fit_dict['_flag['+str(k)+    ']']  
@@ -926,7 +1253,7 @@ class mugui(object):
             '''
             if checkvalidmodel(change['new']): # empty list is False, non empty list is True
                 try:
-                    del _the_model_
+                    del self._the_model_
                     self.lastfit=[] # so that plot understands that ther is no previous minimization
                 except:
                     pass
@@ -1009,7 +1336,8 @@ class mugui(object):
             names = ['self.alpha.value','self.offset.value',
                      'self.grouping','model.value',
                      'fitargs','self.model_components',
-                     'version','nint'] # keys
+                     'version','nint',
+                     'self.fit_range.value','self.plot_range.value'] # keys
             fit_dict = {}
             for k,key in enumerate(names):
                fit_dict[names[k]] = eval(key) # key:value
@@ -1023,6 +1351,7 @@ class mugui(object):
             self.mainwindow.selected_index=3
             with self._output_:
                 print('Saved {}'.format(path))
+            self.introspect()
 
         def set_group():
             """
@@ -1063,7 +1392,7 @@ class mugui(object):
 
         ######### here starts the fit method of MuGui
         _available_components_() # creates tuple self.available_components automagically from mucomponents
-        _the_model_ = mumodel() # local instance, need a new one each time a fit tab is reloaded (on_loadmodel)
+        self._the_model_ = mumodel() # local instance, need a new one each time a fit tab is reloaded (on_loadmodel)
         try:
             alpha0 = self.alpha.value
         except:
@@ -1073,7 +1402,7 @@ class mugui(object):
         except:
             self.offset0 = 7 # generic initial value 
         loadbutton = Button(description='Load fit',layout=Layout(width='10%'))
-        loadbutton.style.button_color = 'lightgreen'
+        loadbutton.style.button_color = self.button_color
         loadbutton.on_click(load_fit)
 
         self.alpha = FloatText(description='alpha',value='{:.4f}'.format(alpha0),
@@ -1108,20 +1437,20 @@ class mugui(object):
         except:
             self.version.value = 1
         fit_button = Button (description='Fit',layout=Layout(width='6%'))
-        fit_button.style.button_color = 'lightgreen'
+        fit_button.style.button_color = self.button_color
         fit_button.on_click(on_fit_request)
         self.fit_range = Text(description='fit range\nstart,stop[,pack]',value='0,10000',layout=Layout(width='18%'),continuous_update=False)
         self.fit_range.style.description_width='37%'
         self.fit_range.observe(on_range,'value')
         plot_button = Button (description='Plot',layout=Layout(width='6%'))
-        plot_button.style.button_color = 'lightgreen'
+        plot_button.style.button_color = self.button_color
         plot_button.on_click(on_plot_request)
         self.plot_range = Text(description='plot range\nstart,stop\n[,pack]\n[last,pack]',value='0,500',
                                layout=Layout(width='20%'),continuous_update=False)
         self.plot_range.style.description_width='38%'
         self.plot_range.observe(on_range,'value')
         update_button = Button (description='Update',layout=Layout(width='8%'))
-        update_button.style.button_color = 'lightgreen'
+        update_button.style.button_color = self.button_color
         
         topframe_handle = HBox(description = 'Model', children=[model, 
                                                                 loadmodel,
@@ -1528,11 +1857,11 @@ class mugui(object):
         self.plot_check.style.description_width='10%'
         fit_button = Button(description='prompt fit',layout=Layout(width='15%'))
         fit_button.on_click(on_prompt_fit_click)
-        fit_button.style.button_color = 'lightgreen'
+        fit_button.style.button_color = self.button_color
         save_button = Button(description='save setup',layout=Layout(width='15%'))
-        save_button.style.button_color = 'lightgreen'
+        save_button.style.button_color = self.button_color
         load_button = Button(description='load setup',layout=Layout(width='15%'))
-        load_button.style.button_color = 'lightgreen'
+        load_button.style.button_color = self.button_color
         prompt_fit = [self.prepostpk[0], self.prepostpk[1], self.plot_check, fit_button ,save_button, load_button] 
         # fit bin range is [self.binrange[0].value:self.binrange[1].value]
         save_button.on_click(save_setup)
@@ -1664,7 +1993,7 @@ class mugui(object):
         # the tab is self.mainwindow.children[1], a VBox 
         # containing three HBoxes, loads_box, comment_box, speedloads_box
         # path is made of a firstcolumn, paths, and a secondcolumns, filespecs, children of setup_box[0]
-        loads = ['Single run','Run suite']
+        loads = ['Single run','Run suite'] 
         speedloads = ['Next run' 'Load next', 'Load previous', 'Add next', 'Add previous', 'Last added']
         loads_box = HBox(description='loads',layout=Layout(width='100%'))
         comment_box = HBox(description='comment',layout=Layout(width='100%'))
@@ -1679,13 +2008,13 @@ class mugui(object):
                                 Text(description='Stop date',layout=Layout(width='30%'),disable=True)]
         # the following doesn't work yet
         Ln_button = Button(description='Load nxt')
-        Ln_button.style.button_color = 'lightgreen'
+        Ln_button.style.button_color = self.button_color
         Lp_button = Button(description='Load prv')
-        Lp_button.style.button_color = 'lightgreen'
+        Lp_button.style.button_color = self.button_color
         An_button = Button(description='Add nxt')
-        An_button.style.button_color = 'lightgreen'
+        An_button.style.button_color = self.button_color
         Ap_button = Button(description='Add prv')
-        Ap_button.style.button_color = 'lightgreen'
+        Ap_button.style.button_color = self.button_color
         self.speedloads_handles = [Text(description='Next run',disabled=True),
                                    Ln_button, Lp_button, An_button, Ap_button, 
                                    Text(description='Last add',disabled=True)]
@@ -1695,4 +2024,22 @@ class mugui(object):
 
         self.mainwindow.children[1].children = [loads_box, comment_box, speedloads_box] # second tab (suite)
 
+    def introspect(self):
+        '''
+        print updated attributes of the class mugui 
+        after each fit in file "mugui.attributes.txt" 
+        in self.__startuppath__
+        '''
+        import os
+        import pprint
+        from ipywidgets import VBox, HBox, Image, Text, Textarea, Layout, Button, IntText, Checkbox, Output, Accordion, Dropdown, FloatText, Tab
+        # trick to avoid printing the large mujpy log image binary file 
+        image = self.__dict__['gui'].children[0].children[0].value
+        self.__dict__['gui'].children[0].children[0].value=b''
+        with open(os.path.join(self.__startuppath__,"mugui.attributes.txt"),'w') as f:
+            pprint.pprint('**************************************************',f)
+            pprint.pprint('*               Mugui attribute list:            *',f)
+            pprint.pprint('**************************************************',f)
+            pprint.pprint(self.__dict__,f)
+        self.__dict__['gui'].children[0].children[0].value=image
 

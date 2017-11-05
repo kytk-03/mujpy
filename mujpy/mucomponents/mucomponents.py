@@ -24,32 +24,6 @@ class mumodel(object):
                (1+1/\sqrt{3})\cos\pi\gamma_\mu\mbox{dipfield}(3+\sqrt{3})t ]\exp(-\mbox{Lor_rate}t)$', 
                      'kg':r'Gauss Kubo-Toyabe: static and dynamic, in zero or longitudinal field by G. Allodi [Phys Scr 89, 115201]'}
 
-    def _load_data_(self,x,y,_int,_alpha,e=1):
-        ''' 
-        Must be called before activating _chisquare_
-        x, y, e are numpy arrays
-        e is always defined, 
-        either provided by the caller 
-        or default to np.ones(x.shape[0])
-        _int is a compact model list
-        _alpha is ditto
-        '''
-        if x.shape[0]!=y.shape[0]:
-            raise ValueError('x, y have different lengths')
-        else:
-            self._x_ = x
-            # print('siz = {}'.format(self._x_.shape[0])) 
-            self._y_ = y
-            self._alpha_ = _alpha
-            self._int = _int
-        if e.shape[0]==1:
-            self._e_ = ones(x.shape[0])
-        else:
-            if e.shape[0]!=x.shape[0]:
-                raise ValueError('x, e have different lengths')           
-            else:
-                self._e_ = e
-
     # ---- end generic __init__
 
     def _add_(self,x,*argv):
@@ -82,8 +56,9 @@ class mumodel(object):
             # now use them in the component - handle of a mucomponents method
             if name == 'da' :#if str(component).find('.da ')+1:
                 _da_flag = True
+                # k += 1
                 # print('{}=self.da True'.format(str(component)))
-                da = p[0]# da must be first!!!
+                da = p[0] # da can be only first, not anywhere
             else:
                 # print('{}=self.da False'.format(str(component)))
                 f += component(x,*p_comp) # calculate the component
@@ -91,6 +66,79 @@ class mumodel(object):
             dada = da/self._alpha_
             f = ((2.+dada)*f-dada)/((2.+dada)-dada*f) # linearized correction 
         return f     
+
+    def _fft_add_(self,x,*argv):
+        '''
+        e.g. a blmg model with bl True and ml False
+        argv will be a tuple of parameter values (val1,val2.val3,val4,val5,val6) at this iteration 
+        after a call to _init_fft(fft_components)
+        _fft_add_ reconstructs how to distribute these parameter values 
+        and generate only the True components for fft of partial residues
+        use to plot : 
+          plt.errorbar(x,y,yerr=e)
+          plt.plot(x,mumodel()._fft_add_(x,*pars)
+        '''  
+        _da_flag_ = False
+        f = zeros(x.shape[0])   
+        #print('p = {}'.format(argv))
+        p = argv # minuit stack of parameters
+        k = -1
+        # print('p = '.format(p))
+        for component_dict,parkeys in self._int:   # this allows only for single run fits       
+            p_comp = [] # must be called p for correct eval-uation
+            for j,name in enumerate(component_dict):
+                component = component_dict[name]
+                for key in parkeys:
+                    if key == '~': # key is `~' also when flag is '!'
+                        k += 1
+                        p_comp.append(p[k]) # this is a parameter value from the stack
+                    else: # flag is '='
+                        p_comp.append(eval(key)) # this is a function string already referenced to the stack 
+            # this loop assigns all component parameters from the stack
+            # now use them in the component - handle of a mucomponents method
+            if name == 'da' :#if str(component).find('.da ')+1:
+                _da_flag = self._fft_components[j]
+                # print('{}=self.da True'.format(str(component)))
+                da = p[0] # da can be anywhere
+            else:
+                # print('{}=self.da False'.format(str(component)))
+                f += component(x,*p_comp) if self._fft_components[j] else 0. # conditionally calculate the component
+        if _da_flag:
+            dada = da/self._alpha_
+            f = ((2.+dada)*f-dada)/((2.+dada)-dada*f) # linearized correction 
+        return f     
+
+    def _fft_init(self,fft_components):
+        '''
+        saves the string of component flags used to generate a partial residue for FFT
+        '''
+        self._fft_components = fft_components # True means include, False, do not include 
+                                             # in function f, for partial residues = asymm - f
+
+    def _load_data_(self,x,y,_int,_alpha,e=1):
+        ''' 
+        Must be called before activating _chisquare_
+        x, y, e are numpy arrays
+        e is always defined, 
+        either provided by the caller 
+        or default to np.ones(x.shape[0])
+        _int is a compact model list
+        _alpha is ditto
+        '''
+        if x.shape[0]!=y.shape[0]:
+            raise ValueError('x, y have different lengths')
+        else:
+            self._x_ = x
+            self._y_ = y
+            self._alpha_ = _alpha
+            self._int = _int
+        if e.shape[0]==1:
+            self._e_ = ones(x.shape[0])
+        else:
+            if e.shape[0]!=x.shape[0]:
+                raise ValueError('x, e have different lengths')           
+            else:
+                self._e_ = e
 
     def bl(self,x,asymmetry,Lor_rate): 
         '''
