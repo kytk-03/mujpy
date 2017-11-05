@@ -19,12 +19,18 @@ Valid on WIN10 that has a linux shell.
    cd ../..
    # now launch your python3 virtualenv   
    python setup.py install
-* Start jupyter:
+
+* Start jupyter::
+
    jupyter notebook
+
 * In the first cell type::
 
   >>>%matplotlib
-* Add a cell and write
+
+* Add a cell and write::
+
    from mujpy.mugui import mugui
    MuJPy = mugui()
+
 * Run the cells
