@@ -319,10 +319,13 @@ class mugui(object):
             yf = self._the_model_._add_(self.time[fit_range],*pars) # [best] fit function
 
             if residues_or_asymmetry.value == 'Residues': 
-                fft_components = []
-                for j in range(len(self.model_components)):
-                    fft_components.append(self.fftcheck[j].value) # from the gui FFT checkboxes
-                self._the_model_._fft_init(fft_components)
+                fft_include_components = []
+                for j,dic in enumerate(self.model_components):
+                    if dic['name']=='da' and self.fftcheck[j].value:
+                        fft_include_da = True # flag for "da is a component" and "include it"
+                    elif dic['name']!='da': # fft_include_components, besides da, True=include, False=do not  
+                        fft_include_components.append(self.fftcheck[j].value) # from the gui FFT checkboxes
+                self._the_model_._fft_init(fft_include_components,fft_include_da)
                 y -=  self._the_model_._fft_add_(self.time[fit_range],*pars) # partial residues
 
             y = np.hstack((y,np.zeros(n-l))) #  zero padded  
@@ -811,14 +814,14 @@ class mugui(object):
             retrieve data from the gui:
             parameters values (parvalue[nint].value), flags (flag[nint].value), 
             errors, limits, functions (function[nint].value), self.alpha.value, self.fit_range.value
-            construct _int, needed by mumodel._add_ to distribute minuit parameter
+            obtains _int, needed by mumodel._add_ to distribute minuit parameter, from int2_int
             costruct fitargs dictionary, needed by migrad (and provided by it at the end)
             pass them to minuit
             mumodel._load_data_
             call minuit(..., *fitargs)
             save values
             save 
-            print summary
+            deals with summary (to be completed)
             '''
             from iminuit import Minuit as M
             import matplotlib.pyplot as P
@@ -839,6 +842,7 @@ class mugui(object):
                 else:
                     fit_start, fit_stop = returntup[0], returntup[1]
                 self.asymmetry(self._the_run_) # prepare asymmetry
+                # print('start={}, stop={}, pack={}'.format(fit_start,fit_stop,fit_pack))
                 fitargs, self.minuit_parameter_names = int2min(return_names=True)
 
                 if fit_pack==1:
@@ -846,7 +850,9 @@ class mugui(object):
                                             int2_int(),self.alpha.value,
                                             e=self.asyme[fit_start:fit_stop]) # pass data to model
                 else: # rebin first
-                    [time,asymm,asyme] = self.rebin(self.time,self.asymm,fit_pack,e=self.asyme)
+                    [time,asymm,asyme] = self.rebin(self.time[fit_start:fit_stop],
+                                                    self.asymm[fit_start:fit_stop],fit_pack,
+                                                    e=self.asyme[fit_start:fit_stop])
                     self._the_model_._load_data_(time,asymm,int2_int(),self.alpha.value,e=asyme) # pass data to model
                     # with self._output_:
                     #    print('asyme={}'.format(asyme))
@@ -879,6 +885,8 @@ class mugui(object):
                                         self.asymm[plot_start:plot_stop],plot_pack,
                                         e=self.asyme[plot_start:plot_stop]) # data points packed
                     ncols, width_ratios = 2,[4,1]
+                    self._the_model_._load_data_(self.time[plot_start:plot_stop],self.asymm[plot_start:plot_stop],
+                                            int2_int(),self.alpha.value) # y data used for sizing f
                     t,f = self.rebin(self.time[plot_start:plot_stop],
                                     self._the_model_._add_(self.time[plot_start:plot_stop],*pars)
                                    ,plot_pack) # version for residues
@@ -1021,7 +1029,8 @@ class mugui(object):
             for the use of mucomponents._add_.
             Invoked just before submitting minuit 
             '''
-            # refactor : this routine has much in common with min2int
+#_components_ = [[method,[key,...,key]],...,[method,[key,...,key]]], and eval(key) produces the parmeter value            
+# refactor : this routine has much in common with min2int
             ntot = sum([len(self.model_components[k]['pars']) for k in range(len(self.model_components))])
             lmin = [-1]*ntot
             nint = -1 # initialize
@@ -1030,20 +1039,23 @@ class mugui(object):
             for k in range(len(self.model_components)):  # scan the model
                 name = self.model_components[k]['name']
                 # print('name = {}, model = {}'.format(name,self._the_model_))
-                bndmthd = self._the_model_.__getattribute__(name)
-                component_dict = {name:bndmthd} # the method
+                bndmthd = [] if name=='da' else self._the_model_.__getattribute__(name)
+                # to set dalpha apart
                 keys = []
+                isminuit = []
                 for j in range(len(self.model_components[k]['pars'])): # 
                     nint += 1  # internal parameter incremente always   
                     if self.flag[nint].value == '=': #  function is written in terms of nint
                         # nint must be translated into nmin 
                         string = translate(nint,lmin)
                         keys.append(string) # the function will be eval-uated, eval(key) inside mucomponents
+                        isminuit.append(False)
                     else:
-                        keys.append('~')
                         nmin += 1
-                        lmin[nmin] = nint # number of minuit parameter
-                _int.append([component_dict,keys])
+                        keys.append('p['+str(nmin)+']')                        
+                        lmin[nmin] = nint # lmin contains the int number of the minuit parameter
+                        isminuit.append(True)
+                _int.append([bndmthd,keys]) #,isminuit])  # ([component_dict,keys])
            # for k in range(len(_int)):
            #     print(_int[k])      
 
@@ -1328,7 +1340,6 @@ class mugui(object):
                 fitargs = int2min() # returns dashboard fitargs only 
             # whereas save_fit(self.lastfit.fitarg) saves fit results
             # from now on fitags exist in the local scope and it is either fit results, if any, or dashboard values
-            _int = int2_int()
             version = self.version.value
             strgrp = self.group[0].value.replace(',','_')+'-'+self.group[1].value.replace(',','_')
             path = os.path.join(self.paths[2].value, model.value+'.'+str(self.nrun[0])+'.'+strgrp+'.fit')
@@ -1549,7 +1560,12 @@ class mugui(object):
                 rightframe_list.append(componentframe_handle) # or to the right if k odd   
 
         # end of model scan, ad two vertical component boxes to the bottom frame
-        bottomframe_handle.children = [VBox(leftframe_list),VBox(rightframe_list)]  # list of handles  
+        bottomframe_handle.children = [VBox(leftframe_list),VBox(rightframe_list)]  # list of handles 
+
+        # backdoor
+        self._load_fit = load_fit
+        self._fit = fitplot
+        self._int2_int = int2_int
 
         # now collect the handles of the three horizontal frames to the main fit window 
         self.mainwindow.children[2].children = [alphaframe_handle, topframe_handle ,bottomframe_handle] 
