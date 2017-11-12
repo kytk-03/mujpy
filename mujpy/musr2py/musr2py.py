@@ -11,7 +11,7 @@ c_int_p = ctypes.POINTER(ctypes.c_int)        # universal int pointer
                                               # used to pass output results together
  					      # with c_int, c_char_p, c_void_p, c_double
 
-lib = cdll.LoadLibrary('MuSR2py.so')        # defines the c wrapper library # add smthng like
+lib = cdll.LoadLibrary('/usr/local/lib/MuSR2py.so')        # defines the c wrapper library # add smthng like
                                             #$ LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/roberto.derenzi/git/mujpy/mujpy/musr2py/
                                             #                                    path where MuSR2py is
                                             #$ export LD_LIBRARY_PATH 

@@ -51,12 +51,12 @@ class mumodel(object):
         # there must be nruns*nlocal+nglobal minuit parameters
         # Additionally with nfixed local constants 
         # self.locals contains nruns*nfixed additional constants 
-        f = zeros(self._y_.shape)
         nfixed = 0
         if self._locals_:
             nfixed = self._locals_.shape[1] # number of fixed local parameters per run_or_runs
 
         if self._multi_run_:
+            f = zeros(self._y_.shape[0],x.shape[0])
             for run in range(self._y_.shape[0]): # range(nruns)
                 p = empty(nfixed+len(argv)) # internally, also locals are parameters
                 if self._locals_:
@@ -81,6 +81,7 @@ class mumodel(object):
                     dada = dalpha/self._alpha_
                     f[run][:] = ((2.+dada)*f-dada)/((2.+dada)-dada*f)
         else:
+            f = zeros(x.shape[0])
             p = empty(nfixed+len(argv)) # internally, also locals are parameters
             if self._locals_:
                 p[:nfixed] = self._locals_ # locals for this run 
@@ -95,7 +96,7 @@ class mumodel(object):
                 # print('y:{},x:{},f:[]'.format(self._y_.shape,x.shape,f.shape))
                 f += component(x,*p_comp)
             if self._da_index_:  # linearized correction 
-                dalpha = p[self._da_index_]
+                dalpha = p[self._da_index_-1]
                 dada = dalpha/self._alpha_
                 f = ((2.+dada)*f-dada)/((2.+dada)-dada*f)
         return f     
@@ -131,13 +132,13 @@ class mumodel(object):
                     p_comp = []
                     for l in range(len(pars)):
                         p_comp.append(eval(pars[l]))
-                        if ismin[l]:     # new version
+                        if ismin[l]:     # new version, not implemented in mugui yet!
                             p[kp] = argv[ka]
                             kp += 1
                             ka += 1
                     f[run][:] += component(x,*p_comp) if self._fft_include_components[j] else 0.
                 if self._da_index_:  # linearized correction 
-                    dalpha = p[self._da_index_]
+                    dalpha = p[self._da_index_-1]
                     dada = dalpha/self._alpha_
                     f[run][:] = ((2.+dada)*f-dada)/((2.+dada)-dada*f)
         else:
@@ -155,7 +156,7 @@ class mumodel(object):
                 # print('y:{},x:{},f:[]'.format(self._y_.shape,x.shape,f.shape))
                 f += component(x,*p_comp) if self._fft_include_components[j] else 0.
             if self._fft_include_da:  # linearized correction 
-                dalpha = p[self._da_index_] # if da is a component, then _load_data_ defines self._da_index_
+                dalpha = p[self._da_index_-1] # if da is a component, then _load_data_ defines self._da_index_
                 dada = dalpha/self._alpha_
                 f = ((2.+dada)*f-dada)/((2.+dada)-dada*f)
         return f     
@@ -200,14 +201,15 @@ class mumodel(object):
                 self._ntruecomponents_ += 1
                 self._components_.append(val) # store again [method, [key,...,key]] # also val[3] = isminuit, in new version
             else:  # when the method is da  (val[0] was set to [], i.e. False)
-                self._da_index_ = int(val[1][0][2:val[1][0].find(']')]) # position in minuit parameter list
+                self._da_index_ = 1+int(val[1][0][2:val[1][0].find(']')]) # position in minuit parameter list +1 to pass logical test
+                # print('_da_index_ = {}'.format(self._da_index_-1))
         if _nglobals_:
             self._nglobals_ = _nglobals_
         else:
             self._nglobals_ = 0 # to be used as index
         self._locals_ = _locals_
-        if x.shape[0]!=y.shape[0]:
-            # global ?
+        if self._multi_run_:
+            # global
             try:
                 # (should be y.shape[1]=x.shape[0])
                 if y.shape[1]!=x.shape[0]: # not global, error!
@@ -385,22 +387,10 @@ class mumodel(object):
                Np = Ns//2-1
                Nm = -Ns//2
            n = hstack((inspace(0,Np,Np+1),linspace(Nm,-1.,-Nm)))
-           f = fft.ifft(fft.fft(f)*exp(nshift*1j*2*pi*n/Ns)); # shift back
+           f = fft.ifft(fft.fft(f)*exp(nshift*1j*2*pi*n/Ns)) # shift back
         # multiply by amplitude
         f = asymmetry*real(f[0:N])
         return f
-
-    def _chisquare_global_(self,*argv,axis=None):
-        '''
-        to be removed
-        signature provided at Minuit invocation by 
-           optional argument forced_parameters=parnames
-           where parnames is a tuple of parameter names 
-           e.g. ('asym','field','phase','rate') 
-           use axis=1 to sum over rows, for partial chisquares
-        '''
-        # numpy sum with axis=None adds all items, over all axes
-        return sum(  ( (self._add_global_(self._x_,*argv) - self._y_) /self._e_)**2 )
 
     def _chisquare_(self,*argv,axis=None):
         '''

@@ -1,7 +1,6 @@
+# coding=utf-8
+# the above line is for python 2 compatibility
 # write tlog
-# write plot (inherit plot form mufit)
-# change edit into an output
-# write fft
 # write suite suite [1.0]
 ######################################################
 # Gui tabs correspond to distinct gui methods with independes scopes and additional local methods
@@ -9,6 +8,7 @@
 #     entities that must be shared between tabs 
 #     including variables passed to functions  outside mugui
 ###############################################################
+
 class mugui(object):
 
 ##########################
@@ -400,7 +400,7 @@ class mugui(object):
 
         def on_range(change):
             '''
-            observe response of fit range widgets:
+            observe response of FFT range widgets:
             check for validity of function syntax
             '''
             from mujpy.aux.derange import derange
@@ -708,15 +708,6 @@ class mugui(object):
                            'With myfit = mufit(), type myfit.help to see the available components')
                 return False # error code
 
-        def arrange(bin_range,target = 'fit'):
-                '''
-                arrange(bin_range) 
-                [arrange(bin_range, target='plot')]
-                writes bin_range into self.fit_range 
-                [self.plot_range] as csv integers
-                '''
-                return exec(target+'_range = str(bin_range[0])+", "+str(bin_range[1])')
-
         def create_model(name):
             '''
             myfit = MuFit()       
@@ -757,14 +748,9 @@ class mugui(object):
                     return [] # error code
             return components
 
-        def derange(target = 'fit'):
+        def old_derange(target = 'fit'):
             '''
-            derange() 
-            [derange(target='plot')]
-            reads self.fit_range 
-            [self.plot_range] assuming two csv positive integers
-            if no comma returns -1,-1 as errors
-            else if values are not numbers, returns -1,0 or 0,-1  
+            delendo
             '''
             string = eval('self.'+target+'_range.value')
             try:  
@@ -809,173 +795,171 @@ class mugui(object):
                        n -= 1
                    return start
 
-        def fitplot(fitflag=False,guess=False):
+        def fitplot(guess=False):
             '''
-            retrieve data from the gui:
-            parameters values (parvalue[nint].value), flags (flag[nint].value), 
-            errors, limits, functions (function[nint].value), self.alpha.value, self.fit_range.value
-            obtains _int, needed by mumodel._add_ to distribute minuit parameter, from int2_int
-            costruct fitargs dictionary, needed by migrad (and provided by it at the end)
-            pass them to minuit
-            mumodel._load_data_
-            call minuit(..., *fitargs)
-            save values
-            save 
-            deals with summary (to be completed)
-            '''
-            from iminuit import Minuit as M
+            plots in fit window
+            guess=True plot dash guess values
+            guess=False plot best fit results
+            '''  
             import matplotlib.pyplot as P
+            from mujpy.aux.derange import derange_int
             from scipy.stats import norm
             from scipy.special import gammainc
-
-            if not self._the_run_:
-                self.mainwindow.selected_index=3
-                with self._output_:
-                     print('No run loaded yet! Load one first (select suite tab).')
-                return    
+            returntup = derange_int(self.plot_range.value)
+            self.asymmetry(self._the_run_) # prepare asymmetry
+            if len(returntup)==5: # plot start stop packearly last packlate
+                start, stop, packearly, last, packlate = returntup[0], returntup[1], returntup[2], returntup[3], returntup[4]
+                t,y,ey = self.rebin(self.time[start:stop],
+                                          self.asymm[start:stop],packearly,
+                                          e=self.asyme[start:stop])
+                tlate,ylate,eylate = self.rebin(self.time[stop:last],
+                                                self.asymm[stop:last],packlate,
+                                                e=self.asyme[stop:last])
+                tfl,dum = self.rebin(self.time[stop:last],self.asymm[stop:last],1)
+                ncols, width_ratios = 3,[2,2,1]
             else:
-                # print('fitflag={} , guess={}'.format(fitflag,guess))
-                returntup = derange() # default is fit
-                fit_pack = 1 # initialize default
-                if len(returntup)==3:
-                    fit_start, fit_stop, fit_pack = returntup[0], returntup[1], returntup[2]
-                else:
-                    fit_start, fit_stop = returntup[0], returntup[1]
-                self.asymmetry(self._the_run_) # prepare asymmetry
-                # print('start={}, stop={}, pack={}'.format(fit_start,fit_stop,fit_pack))
-                fitargs, self.minuit_parameter_names = int2min(return_names=True)
+                pack = 1
+                ncols, width_ratios = 2,[4,1]
+                if len(returntup)==3: # plot start stop pack
+                    start, stop, pack = returntup[0], returntup[1], returntup[2]
+                elif len(returntup)==2: # plot start stop
+                    start, stop = returntup[0], returntup[1]
+                t,y,ey = self.rebin(self.time[start:stop],
+                                    self.asymm[start:stop],pack,
+                                    e=self.asyme[start:stop])
+            tf,dum = self.rebin(self.time[start:stop],self.asymm[start:stop],1)
+    ###############################
+    #  choose pars for fit function
+    ###############################
+            fitargs, self.minuit_parameter_names = int2min(return_names=True) # from dash
+            if guess: # from dash, for plot guess
+                pars = [fitargs[name] for name in self.minuit_parameter_names]
+            else:  # from lastfit, for best fit and plot best fit
+                pars = [self.lastfit.fitarg[name] for name in self.minuit_parameter_names]
+    ###############################
+    #  set of recover figure, axes 
+    ###############################
+            if self.fig_fit: # has been set to a handle once
+                self.fig_fit.clf()
+                self.fig_fit,self.ax_fit = P.subplots(2,ncols,sharex = 'col', 
+                             gridspec_kw = {'height_ratios':[3, 1],'width_ratios':width_ratios},num=self.fig_fit.number)
+                self.fig_fit.subplots_adjust(hspace=0.05,top=0.90,bottom=0.12,right=0.97,wspace=0.03)
+            else: # handle does not exist, make one
+                self.fig_fit,self.ax_fit = P.subplots(2,ncols,figsize=(6,4),sharex = 'col',
+                             gridspec_kw = {'height_ratios':[3, 1],'width_ratios':width_ratios})
+                self.fig_fit.canvas.set_window_title('Fit')
+                self.fig_fit.subplots_adjust(hspace=0.05,top=0.90,bottom=0.12,right=0.97,wspace=0.03)
+    ##########################
+    #  plot data and fit curve
+    ##########################
 
-                if fit_pack==1:
-                    self._the_model_._load_data_(self.time[fit_start:fit_stop],self.asymm[fit_start:fit_stop],
-                                            int2_int(),self.alpha.value,
-                                            e=self.asyme[fit_start:fit_stop]) # pass data to model
-                else: # rebin first
-                    [time,asymm,asyme] = self.rebin(self.time[fit_start:fit_stop],
-                                                    self.asymm[fit_start:fit_stop],fit_pack,
-                                                    e=self.asyme[fit_start:fit_stop])
-                    self._the_model_._load_data_(time,asymm,int2_int(),self.alpha.value,e=asyme) # pass data to model
-                    # with self._output_:
-                    #    print('asyme={}'.format(asyme))
-##############################
-# actual migrad calls
-                if fitflag:
-                    level = 1
-                    with self._output_:
-                        self.lastfit = M(self._the_model_._chisquare_,
-                                         pedantic=False,
-                                         forced_parameters=self.minuit_parameter_names,
-                                         print_level=level,**fitargs)
-                        self.lastfit.migrad()
-##############################
-                if fitflag or (self.lastfit and not guess):
-                    pars = [self.lastfit.fitarg[name] for name in self.minuit_parameter_names]
-                else: # not fitflag and (not self.lastfit or guess)
-                    pars = [fitargs[name] for name in self.minuit_parameter_names]                    
-                returntup = derange(target='plot')
-                plot_start, plot_stop = returntup[0], returntup[1]
-                if len(returntup)==4:
-                    plot_last, plot_pack = returntup[2], returntup[3]
-                    t,y,ey = self.time[plot_start:plot_stop],self.asymm[plot_start:plot_stop],self.asyme[plot_start:plot_stop] 
-                             # data points unpacked, first part 
-                    ncols, width_ratios = 3,[2,2,1]
-                    f = self._the_model_._add_(self.time[plot_start:plot_stop],*pars) # version for residues
-                elif len(returntup)<=3:
-                    plot_pack = 1 if len(returntup)==2 else returntup[2]             
-                    t,y,ey = self.rebin(self.time[plot_start:plot_stop],
-                                        self.asymm[plot_start:plot_stop],plot_pack,
-                                        e=self.asyme[plot_start:plot_stop]) # data points packed
-                    ncols, width_ratios = 2,[4,1]
-                    self._the_model_._load_data_(self.time[plot_start:plot_stop],self.asymm[plot_start:plot_stop],
-                                            int2_int(),self.alpha.value) # y data used for sizing f
-                    t,f = self.rebin(self.time[plot_start:plot_stop],
-                                    self._the_model_._add_(self.time[plot_start:plot_stop],*pars)
-                                   ,plot_pack) # version for residues
+    ############################
+    # plot second window, if any
+    ############################
+            if len(returntup)==5:
+                fl = self._the_model_._add_(tfl,*pars) # tfl,fl for plot curve 
+                flres = self._the_model_._add_(tlate,*pars) # tlate,flate for residues 
+                self.ax_fit[(0,1)].errorbar(tlate,ylate,yerr=eylate,
+                                            fmt='ro',elinewidth=1.0,ms=2.0) # data
+                self.ax_fit[(0,1)].plot(tfl,fl,'g-',lw=1.0) # fit
+                self.ax_fit[(0,1)].set_xlim(tlate[0], tlate[-1])
+                # plot residues
+                self.ax_fit[(1,1)].plot(tlate,ylate-flres,'r-',lw=1.0) # residues
+                self.ax_fit[(1,1)].plot(tlate,ylate-ylate,'g-',lw=1.0) # zero line
+    #############################
+    # plot first (or only) window
+    #############################
+            f = self._the_model_._add_(tf,*pars) # tf,f for plot curve
+            fres = self._the_model_._add_(t,*pars) # t,fres for residues
+            self.ax_fit[(0,0)].errorbar(t,y,yerr=ey,
+                                        fmt='ro',elinewidth=1.0,ms=2.0) # data
+            self.ax_fit[(0,0)].plot(tf,f,'g-',lw=1.0) # fit
+            self.ax_fit[(0,0)].set_xlim([0, t[-1]])
+            # plot residues
+            self.ax_fit[(1,0)].plot(t,y-fres,'r-',lw=1.0) # residues
+            self.ax_fit[(1,0)].plot(t,y-y,'g-',lw=1.0) # zero line
+    ###############################
+    # set title, labels
+    ###############################
+            self.ax_fit[(0,0)].set_title(self.title.value)
+            self.ax_fit[(0,0)].set_ylabel('Asymmetry')
+            self.ax_fit[(1,0)].set_ylabel('Residues')
+            self.ax_fit[(1,0)].set_xlabel(r'Time [$\mu$s]')
+    ########################
+    # chi2 distribution: fit
+    ########################
+            fittup = derange_int(self.fit_range.value)
+            fit_pack =1
+            if len(fittup)==3: # plot start stop pack
+                fit_start, fit_stop, fit_pack = fittup[0], fittup[1], fittup[2]
+            elif len(fittup)==2: # plot start stop
+                fit_start, fit_stop = fittup[0], fittup[1]
+            tfit,yfit,eyfit = self.rebin(self.time[fit_start:fit_stop],
+                                         self.asymm[fit_start:fit_stop],fit_pack,
+                                         e=self.asyme[fit_start:fit_stop])
+            nufit = len(tfit) - len(pars) # degrees of freedom fit
+            # print('fit start, stop, pack = {},{},{}'.format(fit_start, fit_stop, fit_pack))
+            self._the_model_._load_data_(tfit,yfit,int2_int(),self.alpha.value,e=eyfit)
+            ffit = self._the_model_._add_(tfit,*pars) # ffit for histogram if residues
+            chi2fit = self.lastfit.fval/nufit # chi2 in fit
+            xbin = np.linspace(-5.5,5.5,12)
+            self.ax_fit[(1,-1)].hist((yfit-ffit)/eyfit,xbin,
+                                      rwidth=0.9,fc='w',ec='k',lw=0.7,alpha=0.4)
+    #########################################
+    # chi2 distribution: plots, scaled to fit
+    #########################################
+            nu = len(t) - len(pars) # degrees of freedom in plot
+            self._the_model_._load_data_(t,y,int2_int(),self.alpha.value,e=ey)
+            f = self._the_model_._add_(t,*pars) # f for histogram
+            chi2plot = self.lastfit.fval/nu # chi2 in fit
+            # weights = nufit/nu*np.ones(t.shape[0])
+            xbin = np.linspace(-5,5,11)
+            thehist, bin_edges = np.histogram((y-f)/ey,xbin)  
+            self.ax_fit[(1,-1)].bar(bin_edges[:-1],nufit/nu*thehist,width=0.9,fc='g',alpha=0.2)
+            if len(returntup)==5: 
+                nulate = len(tlate) - len(pars) # degrees of freedom late part if it exists
+                self._the_model_._load_data_(tlate,ylate,int2_int(),self.alpha.value,e=eylate)
+                flres = self._the_model_._add_(tlate,*pars) # f for histogram if residues
+                chi2late= self.lastfit.fval/nulate # reduced chisquare
+                # weights = nufit/nulate*np.ones(tlate.shape[0])
+                thehist, bin_edges = np.histogram((ylate-flres)/eylate,xbin) 
+                self.ax_fit[(1,-1)].bar(bin_edges[:-1],nufit/nulate*thehist,width=0.9,fc='r',alpha=0.2)
+                yel,yeh = self.ax_fit[(0,0)].get_ylim()
+                yll,ylh = self.ax_fit[(0,1)].get_ylim()
+                yl,yh = min(yel,yll),max(yeh,ylh)
+                self.ax_fit[(0,0)].set_ylim((yl,yh))
+                self.ax_fit[(0,1)].set_ylim((yl,yh))
+                self.ax_fit[(1,1)].set_ylim(self.ax_fit[(1,0)].get_ylim())
+                self.ax_fit[(0,1)].set_yticklabels(['']*len(self.ax_fit[(0,1)].get_yticks()))
+                self.ax_fit[(1,1)].set_yticklabels(['']*len(self.ax_fit[(1,1)].get_yticks()))
+    ###############################
+    # chi2 dist theo curve & labels 
+    ###############################
+            xh = np.linspace(-5.5,5.5,23)
+            yh = norm.cdf(xh+1)-norm.cdf(xh)
+            self.ax_fit[(1,-1)].plot(xh+0.5,nufit*yh,'r-')
+            self.ax_fit[(1,-1)].set_xlabel("$\sigma$")
+            self.ax_fit[(1,-1)].set_yticklabels(['']*len(self.ax_fit[(1,-1)].get_yticks()))    
+            self.ax_fit[(1,-1)].set_xlim([-5., 5.])
+            # chi2 values and limits
+            mm = round(nu/4)
+            k = np.linspace(-mm,mm,2*mm+1)
+            cc = gammainc((k+nu)/2,nu/2) # muchi2cdf(x,nu) = gammainc(x/2, nu/2);
+            lc = 1+k[min(list(np.where((cc<norm.cdf(1))&(cc>norm.cdf(-1))))[0])]/nufit
+            hc = 1+k[max(list(np.where((cc<norm.cdf(1))&(cc>norm.cdf(-1))))[0])]/nufit
+            string = '$\chi^2_f=$ {:.4f}\n ({:.2f}-{:.2f})\n$\chi^2_c=$ {:.4f}\n{} dof\n'.format(chi2fit,
+                                                                        lc,hc,gammainc(chi2fit,nufit),nufit)
+            if  len(returntup)==5: 
+                string += '$\chi^2_e=$ {:.4f}\n$\chi^2_l=$ {:.4f}'.format(chi2plot,chi2late)
+            else:
+                string += '$\chi^2_p=$ {:.4f}'.format(chi2plot)
+            self.ax_fit[(0,-1)].text(-4,0.2,string)
+            self.ax_fit[(0,-1)].axis('off')
 
-                if self.fig_fit: # has been set to a handle once
-                    self.fig_fit.clf()
-                    self.fig_fit,self.ax_fit = P.subplots(2,ncols,sharex = 'col', 
-                                 gridspec_kw = {'height_ratios':[3, 1],'width_ratios':width_ratios},num=self.fig_fit.number)
-                    self.fig_fit.subplots_adjust(hspace=0.05,top=0.90,bottom=0.12,right=0.97,wspace=0.03)
-                else: # handle does not exist, make one
-                    self.fig_fit,self.ax_fit = P.subplots(2,ncols,figsize=(6,4),sharex = 'col',
-                                 gridspec_kw = {'height_ratios':[3, 1],'width_ratios':width_ratios})
-                    self.fig_fit.canvas.set_window_title('Fit')
-                    self.fig_fit.subplots_adjust(hspace=0.05,top=0.90,bottom=0.12,right=0.97,wspace=0.03)
-                    
-#  plot data and fit curve
-                if len(returntup)==4:
-                    tl,yl,eyl = self.rebin(self.time[plot_stop:plot_last],
-                                           self.asymm[plot_stop:plot_last],plot_pack,
-                                           e=self.asyme[plot_stop:plot_last])
-                    tl,fl = self.rebin(self.time[plot_stop:plot_last],
-                                    self._the_model_._add_(self.time[plot_stop:plot_last],*pars)
-                                   ,plot_pack) # version for residues
-                    self.ax_fit[(0,1)].errorbar(tl,yl,yerr=eyl,fmt='ro',elinewidth=1.0,ms=2.0)
-                    self.ax_fit[(0,1)].plot(self.time[plot_stop:plot_last],
-                                      self._the_model_._add_(self.time[plot_stop:plot_last],*pars),'g-',lw=1.0)
-                    self.ax_fit[(0,1)].set_xlim([self.time[plot_stop], self.time[plot_last]])
-    # plot residues
-                    self.ax_fit[(1,1)].plot(tl,yl-fl,'r-',lw=1.0)
-                    self.ax_fit[(1,1)].plot(tl,yl-yl,'g-',lw=1.0)
-
-                self.ax_fit[(0,0)].errorbar(t,y,yerr=ey,fmt='ro',elinewidth=1.0,ms=2.0)
-                self.ax_fit[(0,0)].plot(self.time[plot_start:plot_stop],
-                                   self._the_model_._add_(self.time[plot_start:plot_stop],*pars),'g-',lw=1.0)
-                self.ax_fit[(0,0)].set_xlim([0, self.time[plot_stop]])
-# plot residues
-                self.ax_fit[(1,0)].plot(t,y-f,'r-',lw=1.0)
-                self.ax_fit[(1,0)].plot(t,y-y,'g-',lw=1.0)
-###############################
-                self.ax_fit[(0,0)].set_title(self.title.value)
-                self.ax_fit[(0,0)].set_ylabel('Asymmetry')
-                self.ax_fit[(1,0)].set_ylabel('Residues')
-                self.ax_fit[(1,0)].set_xlabel(r'Time [$\mu$s]')
-                # chi2 distribution
-                nuchi2 = divmod(fit_stop-fit_start,fit_pack)[0] - len(pars) # degrees of freedom
-                nu = fit_stop-fit_start - len(pars) # degrees of freedom
-                chi2 = self.lastfit.fval/nuchi2 if fitflag else self._the_model_._chisquare_(*pars)/nu # reduced chisquare
-                xbin = np.linspace(-5.5,5.5,12)
-                yfit = self._the_model_._add_(self.time[fit_start:fit_stop],*pars)
-                self.ax_fit[(1,-1)].hist((self.asymm[fit_start:fit_stop]-yfit)/
-                                      self.asyme[fit_start:fit_stop],xbin,
-                                      rwidth=0.9,fc='b',alpha=0.2)
-                if len(returntup)==4:
-                    yel,yeh = self.ax_fit[(0,0)].get_ylim()
-                    yll,ylh = self.ax_fit[(0,1)].get_ylim()
-                    yl,yh = min(yel,yll),max(yeh,ylh)
-                    self.ax_fit[(0,0)].set_ylim((yl,yh))
-                    self.ax_fit[(0,1)].set_ylim((yl,yh))
-                    self.ax_fit[(1,1)].set_ylim(self.ax_fit[(1,0)].get_ylim())
-                    self.ax_fit[(0,1)].set_yticklabels(['']*len(self.ax_fit[(0,1)].get_yticks()))
-                    self.ax_fit[(1,1)].set_yticklabels(['']*len(self.ax_fit[(1,1)].get_yticks()))
-                    xbin = np.linspace(-5,5,11)
-                    yfit = self._the_model_._add_(self.time[plot_start:plot_stop],*pars)
-                    relative_deviations = (self.asymm[plot_start:plot_stop]-yfit)/self.asyme[plot_start:plot_stop]
-                    weights = (plot_last-plot_start)/(plot_stop-plot_start)*np.ones(plot_stop-plot_start)
-                    earlyhist, bin_edges = np.histogram(relative_deviations,xbin,weights=weights)
-                    self.ax_fit[(1,-1)].bar(bin_edges[:-1],earlyhist,width=0.9,fc='r',alpha=0.2)
-                xh = np.linspace(-5.5,5.5,23)
-                yh = nu*(norm.cdf(xh+1)-norm.cdf(xh))
-                self.ax_fit[(1,-1)].plot(xh+0.5,yh,'r-')
-                self.ax_fit[(1,-1)].set_xlabel("$\sigma$")
-                self.ax_fit[(1,-1)].set_yticklabels(['']*len(self.ax_fit[(1,-1)].get_yticks()))    
-                self.ax_fit[(1,-1)].set_xlim([-5., 5.])
-                # chi2 values and limits
-                mm = round(nu/4)
-                k = np.linspace(-mm,mm,2*mm+1)
-                cc = gammainc((k+nu)/2,nu/2) # muchi2cdf(x,nu) = gammainc(x/2, nu/2);
-                lc = 1+k[min(list(np.where((cc<0.95)&(cc>0.05)))[0])]/nu
-                hc = 1+k[max(list(np.where((cc<0.95)&(cc>0.05)))[0])]/nu
-                string = '$\chi^2_r=$ {:.4f}\n ({:.2f}-{:.2f})\n$\chi^2_c=$ {:.4f}\n{} dof'.format(chi2,lc,hc,gammainc(chi2/2,nu/2),nu)
-                self.ax_fit[(0,-1)].text(-4,0.13,string)
-                self.ax_fit[(0,-1)].axis('off')
-
-                self.fig_fit.canvas.manager.window.tkraise()
-
-                P.draw()
-                if fitflag:
-                    save_fit(self.lastfit.fitarg)
-
+            self.fig_fit.canvas.manager.window.tkraise()
+            P.draw()
+            return chi2fit,lc,hc
+                
         def get_grouping(name):
             """
             name = 'forward' or 'backward'
@@ -1033,7 +1017,7 @@ class mugui(object):
 # refactor : this routine has much in common with min2int
             ntot = sum([len(self.model_components[k]['pars']) for k in range(len(self.model_components))])
             lmin = [-1]*ntot
-            nint = -1 # initialize
+            nint = -1 # initializec\c   
             nmin = -1 # initialize
             _int = []
             for k in range(len(self.model_components)):  # scan the model
@@ -1101,6 +1085,8 @@ class mugui(object):
                         if not (par['limits'][0] == 0 and par['limits'][1] == 0):
                             fitargs.update({'limit_'+par['name']:par['limits']})
                     elif self.flag[nint].value == '!':
+                        nmin += 1
+                        lmin[nmin] = nint # correspondence between nmin and nint, is it useful?
                         fitargs.update({par['name']:float(self.parvalue[nint].value)})
                         parameter_names.append(par['name'])
                         fitargs.update({'fix_'+par['name']:True})
@@ -1119,6 +1105,8 @@ class mugui(object):
             import os
 
             path_and_filename = path_file_dialog(self.paths[2].value) # returns the full path and filename
+            if path_and_filename == '':
+                return
             #with self._output_:
             #    print('Loaded fit results from: {}'.format( path_and_filename))
             try:            
@@ -1157,7 +1145,7 @@ class mugui(object):
             '''
             From minuit parameters to internal parameters,
             see int2min for a description   
-            Invoked just after minuit convergence for summary purposes
+            Invoked just after minuit convergence for save_fit, [on_update]
             '''
             # refactor : this routine has much in common with int2_int
             # initialize
@@ -1174,12 +1162,12 @@ class mugui(object):
                     if self.flag[nint].value != '=': #  skip functions, they are not new minuit parameter
                         nmin += 1
                         p[nmin] = fitargs[par['name']] # needed also by functions
-                        _parvalue.append('{:4f}'.format(p[nmin]))                        
+                        _parvalue.append('{:4f}'.format(p[nmin]))   # _parvalue item is a string                     
                         lmin[nint] = nmin # number of minuit parameter
                     else: # functions, calculate as such
                         # nint must be translated into nmin 
                         string = translate(nint,lmin) # 
-                        _parvalue.append('{:4f}'.format(eval(string))) 
+                        _parvalue.append('{:4f}'.format(eval(string))) # _parvalue item is a string
             return _parvalue
             
         def muvalid(string):
@@ -1204,6 +1192,11 @@ class mugui(object):
                 valid = False
             return valid
 
+        def norun_msg():
+            self.mainwindow.selected_index=3
+            with self._output_:
+                 print('No run loaded yet! Load one first (select suite tab).')
+
         def on_alpha_changed(change):
             '''
             observe response of fit tab widgets:
@@ -1218,9 +1211,60 @@ class mugui(object):
 
         def on_fit_request(b):
             '''
-            fit wrapper
+            retrieve data from the gui dashboard:
+            parameters values (parvalue[nint].value), flags (flag[nint].value), 
+            errors, limits, functions (function[nint].value), self.alpha.value, range and pack
+            pass _int, generated by int2_int. to mumodel._add_ (distribute minuit parameters)
+            obtain fitargs dictionary, needed by migrad, either from self.lastfit or from min2int
+            pass them to minuit
+            call fit_plot
+            save fit file in save_fit
+            write summary in write_csv 
             '''
-            fitplot(fitflag=True,guess=False)
+            from iminuit import Minuit as M
+            from mujpy.aux.derange import derange_int
+    ###################
+    # error: no run yet
+    ###################
+            if not self._the_run_:
+                norun_msg()  # writes a message in self._output
+            else:
+    ###################
+    # run loaded
+    ###################
+                pack = 1 # initialize default
+                returntup = derange_int(eval('self.fit_range.value')) 
+                if len(returntup)==3: # 
+                    start, stop, pack = returntup[0], returntup[1], returntup[2]
+                else:
+                    start, stop = returntup[0], returntup[1]
+                self.asymmetry(self._the_run_) # prepare asymmetry
+                time,asymm,asyme = self.rebin(self.time[start:stop],
+                                              self.asymm[start:stop],pack,
+                                              self.asyme[start:stop])
+                fitargs, self.minuit_parameter_names = int2min(return_names=True) # from dash
+                self._the_model_._load_data_(time,asymm,int2_int(),self.alpha.value,e=asyme) # pass data to model
+    ##############################
+    # actual migrad calls
+                level = 1
+                with self._output_:
+                    self.lastfit = M(self._the_model_._chisquare_,
+                                     pedantic=False,
+                                     forced_parameters=self.minuit_parameter_names,
+                                     print_level=level,**fitargs)
+                    self.lastfit.migrad()
+    #                self.lastfit.hesse()
+    ##############################
+                chi2,lc,hc = fitplot() # plot the best fit results 
+                write_csv(chi2,lc,hc)  # writes csv file
+                with self._output_:
+                    path = save_fit(self.lastfit.fitarg)  # saves .fit file
+                    if path != 'error':
+                        print('chi2_r = {:.4f} ({:.4f} - {:.4f}). Saved results in  {}'.format(chi2,lc,hc,path))
+                    else:
+                        print('chi2_r = {:.4f} ({:.4f} - {:.4f}). Could not save results to '.format(chi2,lc,hc,path))
+                self.mainwindow.selected_index=3  # focus on output tab
+
 
          
         def on_flag_changed(change):
@@ -1293,20 +1337,23 @@ class mugui(object):
             '''
             plot wrapper
             '''
-            fitplot(fitflag=False,guess=guesscheck.value) # 
+            dum1,dum2,dum3 = fitplot(guess=guesscheck.value) # 
 
         def on_range(change):
             '''
-            observe response of fit range widgets:
+            observe response of FIT, PLOT range widgets:
             check for validity of function syntax
             '''
+            from mujpy.aux.derange import derange_int
             fit_or_plot = change['owner'].description[0] # description is a long sentence starting with 'fit range' or 'plot range'
-            name='fit' if fit_or_plot=='f' else 'plot'
-            returnedtup = derange(target=name) # errors return (-1,-1),(-1,0),(0,-1), good values are all positive
-            if sum(returnedtup)<0:
+            if fit_or_plot=='f':
+                name = 'fit'
+            else:
+                name = 'plot'
+            returnedtup = derange_int(change['owner'].value) 
+            # print('sum = {}'.format(sum(returnedtup)))
+            if sum(returnedtup)<0: # errors return (-1,-1), good values are all positive
                 if name == 'fit':
-                    with self._output_:
-                        print ('Range error {}\n -2 = non csv'.format(sum(returnedtup)))
                     self.fit_range.value = '0,'+str(self.histoLength)
                     self.fit_range.background_color = "mistyrose"
                 else:
@@ -1318,6 +1365,15 @@ class mugui(object):
                 else:
                     self.plot_range.background_color = "white"
 
+        def on_update(b):
+            '''
+            update parvalue[k].value with last best fit results
+            '''
+            if self.lastfit:
+                _parvalue = min2int(self.lastfit.fitarg) # best fit parameters (strings)
+                for k in range(len(_parvalue)):
+                    self.parvalue[k].value = _parvalue[k]                  
+
         def path_file_dialog(path):
             import tkinter
             from tkinter import filedialog
@@ -1325,13 +1381,14 @@ class mugui(object):
             here = os.getcwd()
             os.chdir(path)
             tkinter.Tk().withdraw() # Close the root window
-            in_path = filedialog.askopenfilename()
+            in_path = filedialog.askopenfilename(filetypes=(('.fit','*.fit'),('all','*.*')))
             os.chdir(here)
             return in_path
 
         def save_fit(fitargs=None):
             '''
             saves fit values such that load_fit can reproduce the same fit
+            saves also a csv of parameters
             '''
             import dill as pickle
             import os
@@ -1340,9 +1397,9 @@ class mugui(object):
                 fitargs = int2min() # returns dashboard fitargs only 
             # whereas save_fit(self.lastfit.fitarg) saves fit results
             # from now on fitags exist in the local scope and it is either fit results, if any, or dashboard values
-            version = self.version.value
+            version = str(self.version.value)
             strgrp = self.group[0].value.replace(',','_')+'-'+self.group[1].value.replace(',','_')
-            path = os.path.join(self.paths[2].value, model.value+'.'+str(self.nrun[0])+'.'+strgrp+'.fit')
+            path_fit = os.path.join(self.paths[2].value, model.value+'.'+version+'.'+str(self.nrun[0])+'.'+strgrp+'.fit')
             # create dictionary setup_dict to be pickled 
             names = ['self.alpha.value','self.offset.value',
                      'self.grouping','model.value',
@@ -1357,12 +1414,13 @@ class mugui(object):
                 fit_dict['_parvalue['+str(k)+']'] = _parvalue[k] # either fit or dashboard
                 fit_dict['_flag['+str(k)+    ']'] = self.flag[k].value # from fit tab
                 fit_dict['_function['+str(k)+']'] = self.function[k].value # from fit tab
-            with open(path,'wb') as f:
-                pickle.dump(fit_dict, f) 
-            self.mainwindow.selected_index=3
-            with self._output_:
-                print('Saved {}'.format(path))
-            self.introspect()
+                
+            with open(path_fit,'wb') as f:
+                try:
+                    pickle.dump(fit_dict, f) 
+                except:
+                    return 'error'
+            return path_fit
 
         def set_group():
             """
@@ -1389,6 +1447,58 @@ class mugui(object):
                     s += ','
                 s = s[:-1]
                 self.group[k].value = s
+
+        def write_csv(chi2,lowchi2,hichi2):
+            '''
+            writes a csv file of best fit parameters 
+            that can be imported by qtiplot
+            or read by python to produce figures
+            
+            '''
+            import os
+            import csv
+
+            version = str(self.version.value)
+            strgrp = self.group[0].value.replace(',','_')+'-'+self.group[1].value.replace(',','_')
+            path_csv = os.path.join(self.paths[2].value, model.value+'.'+version+'.'+str(self.nrun[0])+'.'+strgrp+'.csv')
+
+            TsTc, eTsTc = self._the_run_.get_temperatures_vector(), self._the_run_.get_devTemperatures_vector()
+            Bstr = self._the_run_.get_field()
+            row = [self.nrun[0], TsTc[0],TsTc[1],eTsTc[0],eTsTc[1],float(Bstr[:Bstr.find('G')])]
+            for name in self.minuit_parameter_names:
+                value, error = self.lastfit.fitarg[name], self.lastfit.fitarg['error_'+name]
+                row.append(value)
+                row.append(error) 
+            row.append(chi2)
+            row.append(chi2-lowchi2)
+            row.append(hichi2-chi2)
+
+            try: # the file exists
+                with open(path_csv,'r') as f_in:
+                    reader=csv.reader(f_in,dialect='excel',delimiter=' ',quotechar='"')
+                    header = next(reader)                   
+                with open(path_csv,'w') as f_out:                   
+                    writer=csv.writer(f_out,dialect='excel',delimiter=' ',quotechar='"')
+                    writer.writerow(header)
+                    for line in reader:
+                        if int(line[0]) < self.nrun: # rewrite previous runs
+                            writer.writerow(line)
+                        elif int(line[0]) == self.nrun: # if it exists, skip it
+                            break
+                        writer.writerow(row) # overwrite or write a new run
+                        writer.writerows(reader) # rewrite the rest          
+            except: # write a new file
+                header = ['Run','T_cryo[K]','e_T_cryo[K]','T_sample[K}','e_T_sample[K]','B[G]']
+                for k,name in enumerate(self.minuit_parameter_names):
+                    header.append(name)
+                    header.append('e_'+name)
+                    header.append('chi2_r')
+                    header.append('e_chi2_low')
+                    header.append('e_chi2_hi')
+                with open(path_csv,'w') as f:
+                    writer=csv.writer(f,dialect='excel',delimiter=' ',quotechar='"')
+                    writer.writerow(header)
+                    writer.writerow(row)
 
         def translate(nint,lmin):
             string = self.function[nint].value
@@ -1438,13 +1548,14 @@ class mugui(object):
 
         model = Text(description = '', layout=Layout(width='10%'), disabled = True) # this is static, empty description, next to loadmodel
         model.value = model_in
+        version0 = 1
         loadmodel = Text(description='loadmodel',layout=Layout(width='19%'),continuous_update=False) # this is where one can input a new model name
         loadmodel.observe(on_load_model,'value')
         loadmodel.style.description_width='35%'
         self.version = IntText(description='version',layout=Layout(width='11%',indent=False)) # version.value is an int
         self.version.style.description_width='43%'
         try:
-            self.version.value = version
+            self.version.value = version0
         except:
             self.version.value = 1
         fit_button = Button (description='Fit',layout=Layout(width='6%'))
@@ -1462,6 +1573,7 @@ class mugui(object):
         self.plot_range.observe(on_range,'value')
         update_button = Button (description='Update',layout=Layout(width='8%'))
         update_button.style.button_color = self.button_color
+        update_button.on_click(on_update)
         
         topframe_handle = HBox(description = 'Model', children=[model, 
                                                                 loadmodel,
@@ -1562,7 +1674,7 @@ class mugui(object):
         # end of model scan, ad two vertical component boxes to the bottom frame
         bottomframe_handle.children = [VBox(leftframe_list),VBox(rightframe_list)]  # list of handles 
 
-        # backdoor
+        # backdoors
         self._load_fit = load_fit
         self._fit = fitplot
         self._int2_int = int2_int
@@ -1596,23 +1708,30 @@ class mugui(object):
         xb,yb = rebin(x,y)
         or
         xb,yb,eyb = rebin(x,y,ey) # the 3rd is an error
+        Works also with pack = 1
         '''
         from numpy import floor, sqrt
-        m = int(floor(len(x)/pack))
-        mn = m*pack
-        xx = x[:mn]
-        xx = xx.reshape(m,pack)
-        yy = y[:mn]
-        yy = yy.reshape(m,pack)
-        xb = xx.sum(1)/pack
-        yb = yy.sum(1)/pack
-        if e is not None:
-            ey = e[:mn]
-            ey = ey.reshape(m,pack)
-            eb = sqrt((ey**2).sum(1))/pack
-            return xb,yb,eb
+        if pack==1:
+            if e is None:
+                return x,y
+            else:
+                return x,y,e
         else:
-            return xb,yb
+            m = int(floor(len(x)/pack))
+            mn = m*pack
+            xx = x[:mn]
+            xx = xx.reshape(m,pack)
+            yy = y[:mn]
+            yy = yy.reshape(m,pack)
+            xb = xx.sum(1)/pack
+            yb = yy.sum(1)/pack
+            if e is not None:
+                ey = e[:mn]
+                ey = ey.reshape(m,pack)
+                eb = sqrt((ey**2).sum(1))/pack
+                return xb,yb,eb
+            else:
+                return xb,yb
 
 ##########################i
 # SETUP
@@ -1657,32 +1776,17 @@ class mugui(object):
                 self.nt0 = mujpy_setup['self.nt0'] # bin of peak, nd.array of shape run.get_numberHisto_int()
                 self.dt0 = mujpy_setup['self.dt0'] # fraction of bin, nd.array of shape run.get_numberHisto_int()
                 self.lastbin = mujpy_setup['self.lastbin'] # fraction of bin, nd.array of shape run.get_numberHisto_int()
+                return 0
             except Exception as e:
-                print('Error in load_setup: {}'.format(e))
+                print('Error in load_setup: {}'.format(e)) 
+                return -1   
+ 
 
-        def save_setup(b):
-            """
-            when user presses this setup tab widget:
-            saves mujpy_setup.pkl with setup tab values
-            """
-            import dill as pickle
-            import os
-
-            path = os.path.join(self.__startuppath__, 'mujpy_setup.pkl')
-            # create dictionary setup_dict to be pickled 
-            _paths_content = [ self.paths[k].value for k in range(3) ] # should be 3 ('data','tlag','analysis')
-            _filespecs_content = [ self.filespecs[k].value for k in range(2) ] # should be 2 ('fileprefix','extension')
-            _prepostpk = [self.prepostpk[k].value for k in range(2)] # 'pre-prompt bin','post-prompt bin' len(bkg_content)
-            names = ['_paths_content','_filespecs_content',
-                      '_prepostpk','self.nt0','self.dt0','self.lastbin'] # keys
-            setup_dict = {}
-            for k,key in enumerate(names):
-               setup_dict[names[k]] = eval(key) # key:value
-            with open(path,'wb') as f:
-                pickle.dump(setup_dict, f) # according to __getstate__()
-            self.mainwindow.selected_index=3
-            with self._output_:
-                print('Saved {}'.format(os.path.join(self.__startuppath__,'mujpy_setup.pkl')))
+        def on_introspect(b):
+            '''
+            print the unclean list of class attributes
+            '''
+            self.introspect() 
 
         def on_paths_changed(change):
             '''
@@ -1741,10 +1845,7 @@ class mugui(object):
             P.rc('font', **font)
 
             if not self._the_run_:
-                self.mainwindow.selected_index=3
-                with self._output_:
-                     print('No run loaded yet! Load one first (select suite tab).')
-                return    
+                norun_msg()
             else:
                 npeaks = np.array([np.where(self._the_run_.get_histo_array_int(det) ==
                                    self._the_run_.get_histo_array_int(det).max())[0][0] 
@@ -1836,7 +1937,33 @@ class mugui(object):
             #        print('#{}: {:.2f}'.format(detector,self.dt0[detector]))
             ##################################################################################################
 
-        from ipywidgets import HBox, Layout, VBox, Text, IntText, Checkbox, Button, Output, Accordion
+        def save_setup(b):
+            """
+            when user presses this setup tab widget:
+            saves mujpy_setup.pkl with setup tab values
+            """
+            import dill as pickle
+            import os
+
+            path = os.path.join(self.__startuppath__, 'mujpy_setup.pkl')
+            # create dictionary setup_dict to be pickled 
+            _paths_content = [ self.paths[k].value for k in range(3) ] # should be 3 ('data','tlag','analysis')
+            _filespecs_content = [ self.filespecs[k].value for k in range(2) ] # should be 2 ('fileprefix','extension')
+            _prepostpk = [self.prepostpk[k].value for k in range(2)] # 'pre-prompt bin','post-prompt bin' len(bkg_content)
+            names = ['_paths_content','_filespecs_content',
+                      '_prepostpk','self.nt0','self.dt0','self.lastbin'] # keys
+            setup_dict = {}
+            for k,key in enumerate(names):
+               setup_dict[names[k]] = eval(key) # key:value
+            with open(path,'wb') as f:
+                pickle.dump(setup_dict, f) # according to __getstate__()
+            self.mainwindow.selected_index=3
+            with self._output_:
+                print('Saved {}'.format(os.path.join(self.__startuppath__,'mujpy_setup.pkl')))
+
+
+        from ipywidgets import HBox, Layout, VBox, Text, IntText, Checkbox, Button, Output, Accordion   
+        from numpy import array 
 
         # first tab: setup for things that have to be set initially (paths, t0, etc.)
         # the tab is self.mainwindow.children[0], a VBox 
@@ -1882,19 +2009,24 @@ class mugui(object):
         # fit bin range is [self.binrange[0].value:self.binrange[1].value]
         save_button.on_click(save_setup)
         load_button.on_click(load_setup)
-        nt0_dt0 = [Accordion(children=[HBox(children=[Text(description='t0 [bins]'), Text(description='dt0 [bins]')])])]
-        nt0_dt0[0].set_title(0,'t0 bins and remainders')
-        nt0_dt0[0].selected_index= None
+        nt0_dt0 = Accordion(font_size=12,children=[HBox(children=[Text(description='t0 [bins]'), Text(description='dt0 [bins]')])])#,layout={'height':'22px'})
+        nt0_dt0.set_title(0,'t0 bins and remainders')
+        nt0_dt0.selected_index= None
+        introspect_button = Button(description='Introspect',layout=Layout(width='15%'))
+        introspect_button.on_click(on_introspect)
+        introspect_button.style.button_color = self.button_color
 
         self.t0plot_container = Output(layout=Layout(width='85%'))     
         self.t0plot_results = Output(layout=Layout(width='15%')) 
         setup_hbox[0].children = [paths_box, filespecs_box]
         setup_hbox[1].children = prompt_fit
-        setup_hbox[2].children = nt0_dt0
+        setup_hbox[2].children = [nt0_dt0,introspect_button]
         setup_hbox[3].children = [self.t0plot_container,self.t0plot_results]
+        self.nt0,self.dt0 = array([0.]),array([0.])
         load_setup([])
-        nt0_dt0[0].children[0].children[0].value = ' '.join(map(str,self.nt0.astype(int)))
-        nt0_dt0[0].children[0].children[1].value = ' '.join(map('{:.2f}'.format,self.dt0))
+        nt0_dt0.children[0].children[0].value = ' '.join(map(str,self.nt0.astype(int)))
+        nt0_dt0.children[0].children[1].value = ' '.join(map('{:.2f}'.format,self.dt0))
+            
 
 ##########################
 # SUITE
@@ -1984,8 +2116,6 @@ class mugui(object):
                     self.title.value = '{} {} {} {}'.format(self._the_run_.get_sample(),self._the_run_.get_field(),
                                                                 self._the_run_.get_orient(),self._the_run_.get_temp())                    
                     self.comment_handles[0].value = self._the_run_.get_comment() 
-                    self.temperatures = self._the_run_.get_temperatures_vector() # to be displaced to the .value of a widget in the tlog tab
-                    self.temperaturedevs = self._the_run_.get_devTemperatures_vector()
                     self.comment_handles[1].value = self._the_run_.get_timeStart_vector() 
                     self.comment_handles[2].value = self._the_run_.get_timeStop_vector()
                     self._the_run_display.value = str(self._the_run_.get_runNumber_int()) # = self.loads_handles[0].value 
