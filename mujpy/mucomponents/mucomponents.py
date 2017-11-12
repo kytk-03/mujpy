@@ -112,12 +112,12 @@ class mumodel(object):
           plt.errorbar(x,y,yerr=e)
           plt.plot(x,mumodel()._fft_add_(x,*pars)
         '''  
-        f = zeros(self._y_.shape)
         nfixed = 0
         if self._locals_:
             nfixed = self._locals_.shape[1] # number of fixed local parameters per run_or_runs
 
         if self._multi_run_:
+            f = zeros(self._y_.shape[0],x.shape[0])
             for run in range(self._y_.shape[0]): # range(nruns)
                 p = empty(nfixed+len(argv)) # internally, also locals are parameters
                 if self._locals_:
@@ -137,11 +137,12 @@ class mumodel(object):
                             kp += 1
                             ka += 1
                     f[run][:] += component(x,*p_comp) if self._fft_include_components[j] else 0.
-                if self._da_index_:  # linearized correction 
+                if self._fft_include_da:  # linearized correction 
                     dalpha = p[self._da_index_-1]
                     dada = dalpha/self._alpha_
                     f[run][:] = ((2.+dada)*f-dada)/((2.+dada)-dada*f)
         else:
+            f = zeros(x.shape[0])
             p = empty(nfixed+len(argv)) # internally, also locals are parameters
             if self._locals_:
                 p[:nfixed] = self._locals_ # locals for this run 

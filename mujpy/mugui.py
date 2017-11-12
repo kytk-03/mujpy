@@ -320,6 +320,7 @@ class mugui(object):
 
             if residues_or_asymmetry.value == 'Residues': 
                 fft_include_components = []
+                fft_include_da = False
                 for j,dic in enumerate(self.model_components):
                     if dic['name']=='da' and self.fftcheck[j].value:
                         fft_include_da = True # flag for "da is a component" and "include it"
