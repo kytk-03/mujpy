@@ -1,4 +1,4 @@
-prefix = /usr/local/
+prefix = /usr/local
 
 Linux:
 	g++ -shared -Wl,-soname,MuSR2py.so -o MuSR2py.so -fPIC MuSR_td_PSI_bin.cpp MuSR2py.cpp
