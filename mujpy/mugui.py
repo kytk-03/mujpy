@@ -795,6 +795,16 @@ class mugui(object):
                        n -= 1
                    return start
 
+        def chi(t,y,ey,pars):
+            '''
+            stats for the right side of the plot 
+            '''
+            nu = len(t) - len(pars) # degrees of freedom in plot
+            self._the_model_._load_data_(t,y,int2_int(),self.alpha.value,e=ey)
+            f = self._the_model_._add_(t,*pars) # f for histogram
+            chi2 = self._the_model_._chisquare_(*pars)/nu # chi2 in plot
+            return nu,f,chi2
+            
         def fitplot(guess=False):
             '''
             plots in fit window
@@ -897,33 +907,25 @@ class mugui(object):
             tfit,yfit,eyfit = self.rebin(self.time[fit_start:fit_stop],
                                          self.asymm[fit_start:fit_stop],fit_pack,
                                          e=self.asyme[fit_start:fit_stop])
-            nufit = len(tfit) - len(pars) # degrees of freedom fit
-            # print('fit start, stop, pack = {},{},{}'.format(fit_start, fit_stop, fit_pack))
-            self._the_model_._load_data_(tfit,yfit,int2_int(),self.alpha.value,e=eyfit)
-            ffit = self._the_model_._add_(tfit,*pars) # ffit for histogram if residues
-            chi2fit = self.lastfit.fval/nufit # chi2 in fit
+            nufit,ffit,chi2fit = chi(tfit,yfit,eyfit,pars)
             xbin = np.linspace(-5.5,5.5,12)
             self.ax_fit[(1,-1)].hist((yfit-ffit)/eyfit,xbin,
-                                      rwidth=0.9,fc='w',ec='k',lw=0.7,alpha=0.4)
+                                      rwidth=0.9,fc='w',ec='k',lw=0.7)
     #########################################
     # chi2 distribution: plots, scaled to fit
     #########################################
-            nu = len(t) - len(pars) # degrees of freedom in plot
-            self._the_model_._load_data_(t,y,int2_int(),self.alpha.value,e=ey)
-            f = self._the_model_._add_(t,*pars) # f for histogram
-            chi2plot = self.lastfit.fval/nu # chi2 in fit
-            # weights = nufit/nu*np.ones(t.shape[0])
-            xbin = np.linspace(-5,5,11)
-            thehist, bin_edges = np.histogram((y-f)/ey,xbin)  
-            self.ax_fit[(1,-1)].bar(bin_edges[:-1],nufit/nu*thehist,width=0.9,fc='g',alpha=0.2)
+            nu,f,chi2plot = chi(t,y,ey,pars)
+            self.ax_fit[(1,-1)].hist((y-f)/ey,xbin,weights=nufit/nu*np.ones(t.shape[0]),
+                                      rwidth=0.9,fc='g',alpha=0.2)
+            #thehist, bin_edges = np.histogram((y-f)/ey,xbin)  
+            #self.ax_fit[(1,-1)].bar(bin_edges[:-1],nufit/nu*thehist,width=0.9,fc='g',alpha=0.2)  #bin_edges[:-1]
             if len(returntup)==5: 
-                nulate = len(tlate) - len(pars) # degrees of freedom late part if it exists
-                self._the_model_._load_data_(tlate,ylate,int2_int(),self.alpha.value,e=eylate)
-                flres = self._the_model_._add_(tlate,*pars) # f for histogram if residues
-                chi2late= self.lastfit.fval/nulate # reduced chisquare
+                nulate,flres,chi2late = chi(tlate,ylate,eylate,pars)
                 # weights = nufit/nulate*np.ones(tlate.shape[0])
-                thehist, bin_edges = np.histogram((ylate-flres)/eylate,xbin) 
-                self.ax_fit[(1,-1)].bar(bin_edges[:-1],nufit/nulate*thehist,width=0.9,fc='r',alpha=0.2)
+                #thehist, bin_edges = np.histogram((ylate-flres)/eylate,xbin) 
+                self.ax_fit[(1,-1)].hist((ylate-flres)/eylate,xbin,weights=nufit/nulate*np.ones(tlate.shape[0]),
+                                          rwidth=0.9,fc='r',alpha=0.2)
+                #self.ax_fit[(1,-1)].bar(bin_edges[:-1],nufit/nulate*thehist,width=0.9,fc='r',alpha=0.2)  # bin_edges[:-1]
                 yel,yeh = self.ax_fit[(0,0)].get_ylim()
                 yll,ylh = self.ax_fit[(0,1)].get_ylim()
                 yl,yh = min(yel,yll),max(yeh,ylh)
