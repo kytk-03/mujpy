@@ -1463,7 +1463,7 @@ class mugui(object):
 
             version = str(self.version.value)
             strgrp = self.group[0].value.replace(',','_')+'-'+self.group[1].value.replace(',','_')
-            path_csv = os.path.join(self.paths[2].value, model.value+'.'+version+'.'+str(self.nrun[0])+'.'+strgrp+'.csv')
+            path_csv = os.path.join(self.paths[2].value, model.value+'.'+version+'+'.'+strgrp+'.csv')
 
             TsTc, eTsTc = self._the_run_.get_temperatures_vector(), self._the_run_.get_devTemperatures_vector()
             Bstr = self._the_run_.get_field()
