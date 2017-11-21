@@ -5,9 +5,9 @@
 SPHINXOPTS    =
 SPHINXBUILD   = sphinx-build
 SPHINXPROJ    = mujpy
-SOURCEDIR     = source
+SOURCEDIR     = .
 PAPER         =
-BUILDDIR      = build
+BUILDDIR      = _build
 
 # User-friendly check for sphinx-build
 ifeq ($(shell which $(SPHINXBUILD) >/dev/null 2>&1; echo $$?), 1)
