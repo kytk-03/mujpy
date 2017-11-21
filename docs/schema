@@ -1,0 +1,72 @@
+Schema for a global fit
+
+Foreword: musrfit can fit both asmmetry and individual hystograms;
+The latter requires 2*m parameters for m hystograms: m count rates N and m backgroun rates B. In a global fit over n runs
+they become 2*m*n additional independent parameters. This is required for high background rate instruments, such as LEM.
+For the time being no provision in mujpy.
+ 
+The fit tab has a run list input that accepts run numbers plus run intervals (e.g. 345:349), in any comma separeted succession 
+A fit can be: single, list, global.
+Single fit is a run-by-run mode, each with its own fcn.
+List is run-by-run mode for a list of runs; it can have chained parameters (j best values used as starting guess for j+1 fit)
+Global is a single fcn for a list of n runs; in this case a super list of internal parameters is generated, where each local parameter 
+       is replicated n times; so for a fit that displays k parameters in the stack, with j parameters defined by functions and l fixed,
+       the number of minuit parameters will be n*(k-j) and the number of free minuit parameters will be n*(k-j-l)
+Local paramters can be both values (either free or fixed) or functions
+
+A model is made of components, whose names are two lower case letters, internal parameter order, additional parameters (higher case), two letters   
+  da on its own (not added): parameter da (*)
+  ml cosine lorentz decay: asymm, field (G), phase (deg), ratel (us-1)
+  mg cosine gauss decay: asymm, field (G), pe.g. ml hashase (deg), rateg (us-1)
+  st cosine stretched: asymm, field (G), phase (deg), rate (us-1), beta 
+  jl bessel j0 lorentzian: asymm, field (G), phase (deg), ratel (us-1)
+  jg bessel j0 gauss: asymm, field (G), phase (deg), rateg (us-1)
+  kt ... 
+  TR special component read from data temperature 
+  BR special component read from numinal field
+  AT,TA,BH,PT,PL,.. special components free parameter (e.g. x=AT for total asymmetry, TA0 for total A for activation temperature, y=BH for hyperfine field, ...)
+  
+ 
+da is different
+the model is made of sums of components 
+the gui has a  two-column vertical stack of input rows, one per each parameter, (* marks a label with no input) 
+
+*parnumber parname parvalue flag parfunction localflag 
+
+ *parnumber is a progressive integer in the stack; it represents the internal parameter number 
+          (only a subset of these will be minuit parameter numbers, minuitparnumber)
+
+ parname is "component name + parameter", the latter a 5 letter name, such as asymm field phase rateL rateG rate (see above) 
+
+ parvalue (empty is parameter value is shared with a previous parameter in the stack, first occurrence must be value of function)
+
+ flag is ~ for free, ! for fixed (= for shared is superseeded by function, e.g. the simplest function for parameter 6 is p[3], 
+                                  meening that p[3] value is used also for p[6])
+
+ parfunction, needs a parser for legal syntax (empty if no function); can only make reference to previous parameters in the stack,
+                                                                      e.g. parameter 7 can be p[3]-p[6], but not p[3]-p[8] 
+
+ localflag (True means local, False means global)
+
+legal syntax examples
+p[1] # use p[1] for this parameter as well
+p[5]-2.*p[1]) # e.g AT - p[1] and the previous 
+p[2]+p[4] # e.g. phase p[2] + 
+exp(-p[6]/p[7}) # e.g. with p[6] = TA, p[7] = TR
+
+if a parameter is local in a global fit 
+ 
+
+da is a linear approxiation for an alpha correction. What is the full correction? 
+Assuming the background correction is already taken care of, alpha = NF0/NB0 in 
+NF(t) = NF0 exp(-t/tau) (1-P(t))
+NB(t) = NB0 exp(-t/tau) (1-P(t))
+
+linear fit of (NF(t)*exp(t/tau)+alpha*NB(t)*exp(t/tau))  to 2*NF0 = (NF(t)+NF0/NB0*NB(t))*exp(t/tau), 
+minimize fcn, since if alpha=NF0/NB0+da there will be a deviation in each bin equal to da*NB0(1+P(t))
+The guess value is dt/T*sum(NF(t)/NB(t)), good for transverse geometry 
+(for longitudinal geometry, unrelaxed polarization this is ~ 1.27/0.73*alpha = 1.74 alpha)  
+
+linear fit of (NB(t)+1/alpha*NF(t)) to 2*NF0/alpha must yield alpha = 2*NF0/2*NB0
+
+P(t) =  (NF(t) - alpha NB(t))/2*NF0
