@@ -2037,28 +2037,6 @@ class mugui(object):
             self.groupcounts.value = str(gsum)
             self.nsbin.value = '{:.3}'.format(self._the_run_.get_binWidth_ns())
 
-        def muzeropad(runs):
-            '''
-            utility of the suite tab, not a method
-            future:
-            1) look for '+' and separate runs to be added
-            2) determine how many leading zeros for padding
-               read a file from data dir
-               check number of digits before '.'
-               count number of digits in run
-               zero pad
-            now:
-            0) zeroth version pads a fixed number of zeros to 4 digits
-            '''
-            zeros='0000'
-            if len(runs)<len(zeros):
-                return zeros[:len(zeros)-len(runs)]+runs
-            elif len(runs)==len(zeros):
-                return runs
-            else:
-                print('Too long run number!')
-                return []
-
         def on_loads_changed(change):
             '''
             observe response of suite tab widgets:
@@ -2067,6 +2045,7 @@ class mugui(object):
             import mujpy.musr2py.musr2py as muload
             import numpy as np
             import os
+            from mujpy.aux.rebin import muzeropad
 
             run_or_runs = change['owner'].description # description is either 'Single run' or 'Run  suite'
             if run_or_runs == loads[0]: # 'Single run'
@@ -2074,7 +2053,8 @@ class mugui(object):
                 self._the_run_ = muload.musr2py() # *** fix a better integration between classes, mugui, mufit, muset, musuite ***
                 path_and_filename = '' 
                 filename = ''
-                filename = filename.join([self.filespecs[0].value,muzeropad(self.loads_handles[0].value),'.',self.filespecs[1].value])
+                filename = filename.join([self.filespecs[0].value,muzeropad(self.loads_handles[0].value,
+                                          self._output_),'.',self.filespecs[1].value])
                 path_and_filename = os.path.join(self.paths[0].value,filename)
                                     # data path + filespec + padded run rumber + extension)
                 if self._the_run_.read(path_and_filename) == 1: # error condition, set by musr2py.cpp
