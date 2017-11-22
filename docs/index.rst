@@ -12,10 +12,9 @@ Welcome to mujpy's documentation!
 
    Introduction
    Tutorial
+   Reference
    RstExamples
 ..   Install
-
-..   Reference
 ..   ContactTerm
 ..   FAQ
 
@@ -27,4 +26,4 @@ Indices and tables
 * :ref:`modindex`
 * :ref:`search`
 
-
+O

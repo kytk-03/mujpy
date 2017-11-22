@@ -625,7 +625,6 @@ class mugui(object):
 #     delete_model: for a clean start
 #     help  
 #     load 
-#     rebin
 #     save cannot dill a class, rather a selected list of attributes, including:
 #       firstbin, lastbin, offset, nt0, dt0, self._the_model_, _the_run_, _the_suite_, fitargs, ...
 #       purpose: load will provide a status ready for a new fit
@@ -816,17 +815,18 @@ class mugui(object):
             from mujpy.aux.derange import derange_int
             from scipy.stats import norm
             from scipy.special import gammainc
+            from mujpy.aux.rebin import rebin
             returntup = derange_int(self.plot_range.value)
             self.asymmetry(self._the_run_) # prepare asymmetry
             if len(returntup)==5: # plot start stop packearly last packlate
                 start, stop, packearly, last, packlate = returntup[0], returntup[1], returntup[2], returntup[3], returntup[4]
-                t,y,ey = self.rebin(self.time[start:stop],
+                t,y,ey = rebin(self.time[start:stop],
                                           self.asymm[start:stop],packearly,
                                           e=self.asyme[start:stop])
-                tlate,ylate,eylate = self.rebin(self.time[stop:last],
+                tlate,ylate,eylate = rebin(self.time[stop:last],
                                                 self.asymm[stop:last],packlate,
                                                 e=self.asyme[stop:last])
-                tfl,dum = self.rebin(self.time[stop:last],self.asymm[stop:last],1)
+                tfl,dum = rebin(self.time[stop:last],self.asymm[stop:last],1)
                 ncols, width_ratios = 3,[2,2,1]
             else:
                 pack = 1
@@ -835,10 +835,10 @@ class mugui(object):
                     start, stop, pack = returntup[0], returntup[1], returntup[2]
                 elif len(returntup)==2: # plot start stop
                     start, stop = returntup[0], returntup[1]
-                t,y,ey = self.rebin(self.time[start:stop],
+                t,y,ey = rebin(self.time[start:stop],
                                     self.asymm[start:stop],pack,
                                     e=self.asyme[start:stop])
-            tf,dum = self.rebin(self.time[start:stop],self.asymm[start:stop],1)
+            tf,dum = rebin(self.time[start:stop],self.asymm[start:stop],1)
     ###############################
     #  choose pars for fit function
     ###############################
@@ -905,7 +905,7 @@ class mugui(object):
                 fit_start, fit_stop, fit_pack = fittup[0], fittup[1], fittup[2]
             elif len(fittup)==2: # plot start stop
                 fit_start, fit_stop = fittup[0], fittup[1]
-            tfit,yfit,eyfit = self.rebin(self.time[fit_start:fit_stop],
+            tfit,yfit,eyfit = rebin(self.time[fit_start:fit_stop],
                                          self.asymm[fit_start:fit_stop],fit_pack,
                                          e=self.asyme[fit_start:fit_stop])
             nufit,ffit,chi2fit = chi(tfit,yfit,eyfit,pars)
@@ -1226,6 +1226,7 @@ class mugui(object):
             '''
             from iminuit import Minuit as M
             from mujpy.aux.derange import derange_int
+            from mujpy.aux.rebin import rebin
     ###################
     # error: no run yet
     ###################
@@ -1242,7 +1243,7 @@ class mugui(object):
                 else:
                     start, stop = returntup[0], returntup[1]
                 self.asymmetry(self._the_run_) # prepare asymmetry
-                time,asymm,asyme = self.rebin(self.time[start:stop],
+                time,asymm,asyme = rebin(self.time[start:stop],
                                               self.asymm[start:stop],pack,
                                               self.asyme[start:stop])
                 fitargs, self.minuit_parameter_names = int2min(return_names=True) # from dash
@@ -1463,7 +1464,7 @@ class mugui(object):
 
             version = str(self.version.value)
             strgrp = self.group[0].value.replace(',','_')+'-'+self.group[1].value.replace(',','_')
-            path_csv = os.path.join(self.paths[2].value, model.value+'.'+version+'+'.'+strgrp+'.csv')
+            path_csv = os.path.join(self.paths[2].value,model.value+'.'+version+'.'+strgrp+'.csv')
 
             TsTc, eTsTc = self._the_run_.get_temperatures_vector(), self._the_run_.get_devTemperatures_vector()
             Bstr = self._the_run_.get_field()
@@ -1701,40 +1702,6 @@ class mugui(object):
         _output_box = HBox([self._output_],layout=Layout(width='100%')) # x works y does scroll
         self.mainwindow.children[3].children = [_output_box] 
                              # add the list of widget handles as the fourth tab, output
-
-##########################
-# REBIN
-##########################
-    def rebin(self,x,y,pack,e=None):
-        '''
-        use either 
-        xb,yb = rebin(x,y)
-        or
-        xb,yb,eyb = rebin(x,y,ey) # the 3rd is an error
-        Works also with pack = 1
-        '''
-        from numpy import floor, sqrt
-        if pack==1:
-            if e is None:
-                return x,y
-            else:
-                return x,y,e
-        else:
-            m = int(floor(len(x)/pack))
-            mn = m*pack
-            xx = x[:mn]
-            xx = xx.reshape(m,pack)
-            yy = y[:mn]
-            yy = yy.reshape(m,pack)
-            xb = xx.sum(1)/pack
-            yb = yy.sum(1)/pack
-            if e is not None:
-                ey = e[:mn]
-                ey = ey.reshape(m,pack)
-                eb = sqrt((ey**2).sum(1))/pack
-                return xb,yb,eb
-            else:
-                return xb,yb
 
 ##########################i
 # SETUP

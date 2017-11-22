@@ -15,10 +15,11 @@ It is **very badly** approximated by considering
 
 As we said :mod:`mujpy` can only handle 1-k magnetic structures.
 
-.. _intro: Introduction.html
+Example of reference
+--------------------
+Find below an example notebook that activates the Gui interface. An alternative way to familiarise with mujpy is to run directly the **here comes the sun** :ref:`intro` first and then come back here for a more systematic introduction. (fake bit from muesr for rst syntax) 
 
-Find below an example notebook that activates the Gui interface. An alternative way to familiarise with mujpy is to run directly the :ref:`intro` first and then come back here for a more systematic introduction. (fake bit from muesr for rst syntax) 
-
+.. _intro: ./Introduction.html
 
 .. code-block:: python
 
