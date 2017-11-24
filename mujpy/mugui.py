@@ -50,7 +50,7 @@ class mugui(object):
         self._the_run_ = []  # if self._the_run_: is False, to check whether the handle is created
         self.first_t0plot = True
         self.lastfit = [] # initialize
-        self._global_fit_ = False # 
+        self._multi_ = False # 
 # mujpy paths
         self.__path__ = os.path.dirname(MuJPyName)
         self.__logopath__ = os.path.join(self.__path__,"logo")
@@ -146,14 +146,14 @@ class mugui(object):
         depending on self.global True or False set by suite
         creates time or not and creates  or appends asymm asyme
         for single run if binwidth_ns does not exist, creates times 
-        for _global_fit_ asymmetry must be called in suite sequence, starting from a master
+        for _multi_ asymmetry must be called in suite sequence, starting from a master
             prior to which binwidth_ns must be set = []
         """ 
         import numpy as np
 
         question = lambda q: input(q+'? (y/n)').lower().strip()[0] == "y" or question(q)
 
-        if not self.binwidth_ns or self._global_fit_: # first run
+        if not self.binwidth_ns or self._multi_: # first run
             self.numberHisto = run.get_numberHisto_int()
             self.histoLength = run.get_histoLength_bin() - self.nt0.max() - self.offset.value # max available bins on all histos
             self.firstrun  = True
@@ -208,7 +208,7 @@ class mugui(object):
         y = (yforw-self.alpha.value*ybackw)/enn0*np.exp(self.time/self.TauMu_mus)  # since self.time is an np.arange, this is a numpy array
         ey = np.sqrt(cforw + self.alpha.value**2*cbackw)*np.exp(self.time/self.TauMu_mus)/enn0 # idem
         ey[np.where(ey==0)] = 1 # substitute zero with one in ey
-        if self._global_fit_: # the first call of the suite the master, resets binwidth_ns, hence self.firstrun=True 
+        if self._multi_: # the first call of the suite the master, resets binwidth_ns, hence self.firstrun=True 
             if self.firstrun:
                 self.asymm = y # np.array
                 self.asyme = ey # idem
@@ -241,13 +241,18 @@ class mugui(object):
         file = open(os.path.join(self.__logopath__,"logo.png"), "rb")
         image = file.read()
         logo = Image(value=image,format='png',width=132,height=132)
-        self.title = Text(description='run title', value='none yet',layout=Layout(width='70%'),disable=True)
-        self._the_run_display = Text(description='run number',value='no run',layout=Layout(width='30%'),Disable=True)
+        self.title = Text(description='run title', value='none yet',layout=Layout(width='70%'),disabled=True)
+        self._the_run_display = Text(description='run number',value='no run',layout=Layout(width='30%'),disabled=True)
         title_content = [self._the_run_display, self.title]
         titlerow = HBox(description='Title')
         titlerow.children = title_content
+        comment_box = HBox(description='comment',layout=Layout(width='100%'))
+        self.comment_handles = [Text(description='Comment',layout=Layout(width='30%'),disabled=True),
+                                Text(description='Start date',layout=Layout(width='30%'),disabled=True),
+                                Text(description='Stop date',layout=Layout(width='30%'),disabled=True)]
+        comment_box.children = self.comment_handles
         counts = ['Total counts', 'Group counts','ns/bin'] # needs an HBox with three Text blocks
-        self.totalcounts = Text(value='0',description='Total counts',layout=Layout(width='40'),disabled=True)
+        self.totalcounts = Text(value='0',description='Total counts',layout=Layout(width='40%'),disabled=True)
         self.groupcounts = Text(value='0',description='Group counts',layout=Layout(width='40%'),disabled=True)
         self.nsbin = Text(description='ns/bin',layout=Layout(width='20%'),disabled=True)
         secondrow = HBox(description='counts',layout=Layout(width='100%'))
@@ -255,7 +260,7 @@ class mugui(object):
         # self._output_ = Output(layout=Layout(width='100%'))
         # thirdrow = HBox([self._output_],layout=Layout(height='60px',width='100%',overflow_y='scroll',overflow_x='scroll')) # x works y does scroll
         titlewindow = VBox()
-        titlewindow_content = [titlerow, secondrow] # ,thirdrow (moved to 4th tab)
+        titlewindow_content = [titlerow, comment_box, secondrow] # ,thirdrow (moved to 4th tab)
         titlewindow.children = titlewindow_content
         titlelogowindow = HBox()
         titlelogowindow_content = [logo, titlewindow]
@@ -2037,21 +2042,44 @@ class mugui(object):
             self.groupcounts.value = str(gsum)
             self.nsbin.value = '{:.3}'.format(self._the_run_.get_binWidth_ns())
 
+
+        def derun(string):
+            '''
+            produces a list of run strin
+            '''
+            s = []
+            for b in string.split(','):
+                k = b.find(':')
+                if k>0:
+                    for j in range(int(b[0:k]),int(b[k+1:])+1):
+                        s.append(str(j))
+                else:
+                    s.append(b)
+            return s
+
         def on_loads_changed(change):
             '''
             observe response of suite tab widgets:
-            try loading a run via musrpy 
+            load a run via musrpy 
+            single run:
+               clears run suite
+               loads run
+               sets _multi_ to false
+            run suite version: 
+               clears single run
+               loads suite
+               sets _multi_ to true                 
             '''
-            import mujpy.musr2py.musr2py as muload
+            from mujpy.musr2py.musr2py import musr2py as muload
             import numpy as np
             import os
             from mujpy.aux.rebin import muzeropad
 
             run_or_runs = change['owner'].description # description is either 'Single run' or 'Run  suite'
             if run_or_runs == loads[0]: # 'Single run'
-                self._global_fit_ = False # check when introducing suites
-                self._the_run_ = muload.musr2py() # *** fix a better integration between classes, mugui, mufit, muset, musuite ***
-                path_and_filename = '' 
+                self._multi_ = False # check when introducing suites
+                self._the_run_ = muload() # *** fix a better integration between classes, mugui, mufit, muset, musuite ***
+                # path_and_filename = '' 
                 filename = ''
                 filename = filename.join([self.filespecs[0].value,muzeropad(self.loads_handles[0].value,
                                           self._output_),'.',self.filespecs[1].value])
@@ -2063,12 +2091,6 @@ class mugui(object):
                         print ('\nFile {} not read. Check paths, filespecs and run rumber on setup tab'.
                                 format(path_and_filename))
                 else:
-                    self.title.value = '{} {} {} {}'.format(self._the_run_.get_sample(),self._the_run_.get_field(),
-                                                                self._the_run_.get_orient(),self._the_run_.get_temp())                    
-                    self.comment_handles[0].value = self._the_run_.get_comment() 
-                    self.comment_handles[1].value = self._the_run_.get_timeStart_vector() 
-                    self.comment_handles[2].value = self._the_run_.get_timeStop_vector()
-                    self._the_run_display.value = str(self._the_run_.get_runNumber_int()) # = self.loads_handles[0].value 
                     try:
                         dummy = self.nt0.sum() # fails if self.nt0 does not exist yet
                     except: # runs this only if self.nt0 does not exist
@@ -2077,12 +2099,66 @@ class mugui(object):
                         for k in range(self._the_run_.get_numberHisto_int()):
                             self.nt0[k] = np.where(self._the_run_.get_histo_array_int(k)==
                                                    self._the_run_.get_histo_array_int(k).max())[0][0]
-                    get_totals() # sets totalcounts, groupcounts and nsbin                                
-            else:
-                # multi run
-                self._global_fit_ = True
-                print('to be implemented ...')
-             
+                    self.title.value = '{} {} {} {}'.format(self._the_run_.get_sample(),self._the_run_.get_field(),
+                                                            self._the_run_.get_orient(),self._the_run_.get_temp())                    
+                    self.comment_handles[0].value = self._the_run_.get_comment() 
+                    self.comment_handles[1].value = self._the_run_.get_timeStart_vector() 
+                    self.comment_handles[2].value = self._the_run_.get_timeStop_vector()
+                    self._the_run_display.value = str(self._the_run_.get_runNumber_int()) # = self.loads_handles[0].value 
+                    get_totals() # sets totalcounts, groupcounts and nsbin
+                    # self.loads_handles[1].value=''  # just loaded a single run, incompatible with suite
+            else: # multi run
+                self._multi_ = True
+                self._the_runs_ = []  # it will be a list of muload() runs
+                for k,run in enumerate(derun(self.loads_handles[1].value)):# derun parses run suite string
+                    filename = ''
+                    filename = filename.join([self.filespecs[0].value,
+                                              muzeropad(run,self._output_),
+                                              '.',self.filespecs[1].value])
+                    path_and_filename = os.path.join(self.paths[0].value,filename)
+                                    # data path + filespec + padded run rumber + extension)
+                    self._the_runs_.append(muload())  # this adds to the list a new instance of muload()
+                    read_ok = self._the_runs_[k].read(path_and_filename) #
+                    if read_ok==1: # error condition, set by musr2py.cpp
+                        self.mainwindow.selected_index=3
+                        with self._output_:
+                            print ('\nFile {} not read. Check paths, filespecs and run rumber on setup tab'.
+                                    format(path_and_filename))
+                            break  # this leaves the previous loaded runs n the suite 
+                    else:
+                        if k==0:
+                            # title, totals and comments only for master run
+                            self._the_run_ = self._the_runs_[0] # this run becomes the suite master
+                            try:
+                                dummy = self.nt0.sum() # fails if self.nt0 does not exist yet
+                            except: # runs this only if self.nt0 does not exist
+                                self.nt0 = np.zeros(self._the_run_.get_numberHisto_int(),dtype=int)
+                                self.dt0 = np.zeros(self._the_run_.get_numberHisto_int(),dtype=float)
+                                for j in range(self._the_runs_.get_numberHisto_int()):
+                                    self.nt0[j] = np.where(self._the_run_.get_histo_array_int(j)==
+                                                           self._the_run_.get_histo_array_int(j).max())[0][0]
+
+                            self.title.value = '{} {} {} {}'.format(self._the_run_.get_sample(),
+                                                                    self._the_run_.get_field(),
+                                                                    self._the_run_.get_orient(),
+                                                                    self._the_run_.get_temp())                    
+                            self.comment_handles[0].value = self._the_run_.get_comment() 
+                            self.comment_handles[1].value = self._the_run_.get_timeStart_vector() 
+                            self.comment_handles[2].value = self._the_run_.get_timeStop_vector()
+                            self._the_run_display.value = str(self._the_run_.get_runNumber_int()) # = self.loads_handles[0].value 
+                            get_totals() # sets totalcounts, groupcounts and nsbin
+                        else:
+                            ok = [self._the_runs_[k].get_numberHisto_int() == self._the_run_.get_numberHisto_int(),
+                                  self._the_runs_[k].get_binWidth_ns() == self._the_run_.get_binWidth_ns()]
+                            if not all(ok):
+                                self._the_runs_=[]
+                                # self.loads_handles[1].value=''  # just loaded a single run, incompatible with suite
+                                self.mainwindow.selected_index=3
+                                with self._output_:
+                                    print ('\nFile {} has wrong histoNumber or binWidth'.
+                                            format(path_and_filename))
+                                    break  # this leaves no loaded runs n the suite 
+                 
         from ipywidgets import HBox, Layout, Text, Button
 
         # second tab: select run or suite of runs (for sequential or global fits)
@@ -2092,16 +2168,12 @@ class mugui(object):
         loads = ['Single run','Run suite'] 
         speedloads = ['Next run' 'Load next', 'Load previous', 'Add next', 'Add previous', 'Last added']
         loads_box = HBox(description='loads',layout=Layout(width='100%'))
-        comment_box = HBox(description='comment',layout=Layout(width='100%'))
         speedloads_box = HBox(description='speedloads',layout=Layout(width='100%'))
         width = ['50%','150%']
         self.loads_handles = [Text(description=loads[k],layout=Layout(width=width[k]),continuous_update=False) 
                               for k in range(len(loads))]
         self.loads_handles[0].observe(on_loads_changed,'value')
         self.loads_handles[1].observe(on_loads_changed,'value')
-        self.comment_handles = [Text(description='Comment',layout=Layout(width='30%'),disable=True),
-                                Text(description='Start date',layout=Layout(width='30%'),disable=True),
-                                Text(description='Stop date',layout=Layout(width='30%'),disable=True)]
         # the following doesn't work yet
         Ln_button = Button(description='Load nxt')
         Ln_button.style.button_color = self.button_color
@@ -2115,10 +2187,9 @@ class mugui(object):
                                    Ln_button, Lp_button, An_button, Ap_button, 
                                    Text(description='Last add',disabled=True)]
         loads_box.children = self.loads_handles
-        comment_box.children = self.comment_handles
         speedloads_box.children = self.speedloads_handles
 
-        self.mainwindow.children[1].children = [loads_box, comment_box, speedloads_box] # second tab (suite)
+        self.mainwindow.children[1].children = [loads_box, speedloads_box] # second tab (suite)
 
     def introspect(self):
         '''
