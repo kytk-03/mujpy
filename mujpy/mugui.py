@@ -1,7 +1,7 @@
 # coding=utf-8
 # the above line is for python 2 compatibility
 # write tlog
-# write suite suite [1.0]
+# write suite suite [1.0] in progress: inserted suite load, asym as a matrix, fft on matrix CHECK!!!
 ######################################################
 # Gui tabs correspond to distinct gui methods with independes scopes and additional local methods
 # gui attributes: 
@@ -45,18 +45,18 @@ class mugui(object):
         self.peakwidth = 1.   # broad guesses for default
         self.histoLength = 8000 # initialize
 
-        self.binwidth_ns = [] # this way the first call to asymmetry(_the_run_) initializes self.time
+        self.binwidth_ns = [] # this way the first call to asymmetry(_the_runs_) initializes self.time
         self.grouping = {'forward':np.array([1]),'backward':np.array([0])} # normal dict
-        self._the_run_ = []  # if self._the_run_: is False, to check whether the handle is created
+        self._the_runs_ = []  # if self._the_runs_: is False, to check whether the handle is created
         self.first_t0plot = True
         self.lastfit = [] # initialize
-        self._multi_ = False # 
 # mujpy paths
         self.__path__ = os.path.dirname(MuJPyName)
         self.__logopath__ = os.path.join(self.__path__,"logo")
         self.__startuppath__ = os.getcwd() # working directory, in which, in case, to find mujpy_setup.pkl 
 # mujpy layout
         self.button_color = 'lightgreen'
+        self.thermo = 1 # sample thermometer is 0?
 
         #####################################
         # actually produces the gui interface
@@ -68,13 +68,15 @@ class mugui(object):
         self.fit()
         self.output() # this calls output(self) that defines self._output_
         self.fft()
+        self.plots()
 
         #####################################
         # static figures 
         ##########################        self.fig_fit = [] # initialize to false, it will become a pyplot.subplots instance 
 ###########
         self.fig_fit = [] # initialize to false, it will become a pyplot.subplots instance 
-        self.fig_fft = [] # initialize to false, it will become a pyplot.subplots instance 
+        self.fig_fft = [] # initialize to false, it will become a pyplot.subplots instance
+        self.fig_multiplot = [] 
 #        self.graph_fit = Toplevel()
 #        canvas_fit = FigureCanvas(self.fig_fit, master=self.graph_fit)
 #        canvas_fit.get_tk_widget().pack()
@@ -136,31 +138,25 @@ class mugui(object):
 ##########################
 # ASYMMETRY
 ##########################
-    def asymmetry(self,run):   # lastbin):
+    def asymmetry(self,run, which=None):   # run is a list, select which (see help)
         """
         the first run of the session must define self.time
-        adds aymmetry end error from a run over maximum available bins
-        bin partial selection by interval is done elsewhere
-        # returns 0 for ok and -1 for error RETHINK
-        MAYBE:
-        depending on self.global True or False set by suite
-        creates time or not and creates  or appends asymm asyme
-        for single run if binwidth_ns does not exist, creates times 
-        for _multi_ asymmetry must be called in suite sequence, starting from a master
-            prior to which binwidth_ns must be set = []
+        generates asymmetry end error (pack=1, all bins)
+        # returns 0 for ok and -1 for error 
+        which = None, 
+                      len(run)>1 multi run load them all (global or multiplot)
+                      len(run)=1 single run 
+              = k, multi run load one of them (non global)  
         """ 
         import numpy as np
 
-        question = lambda q: input(q+'? (y/n)').lower().strip()[0] == "y" or question(q)
-
-        if not self.binwidth_ns or self._multi_: # first run
-            self.numberHisto = run.get_numberHisto_int()
-            self.histoLength = run.get_histoLength_bin() - self.nt0.max() - self.offset.value # max available bins on all histos
-            self.firstrun  = True
-            self.binwidth_ns = run.get_binWidth_ns() 
-            self.time = (np.arange(self.histoLength) + self.offset.value +
-                         np.mean(self.dt0 [np.append(self.grouping['forward'],self.grouping['backward'])] ) 
-                         )*self.binwidth_ns/1000. # in microseconds
+        self.numberHisto = run[0].get_numberHisto_int()
+        self.histoLength = run[0].get_histoLength_bin() - self.nt0.max() - self.offset.value # max available bins on all histos
+        self.firstrun  = True
+        self.binwidth_ns = run[0].get_binWidth_ns() 
+        self.time = (np.arange(self.histoLength) + self.offset.value +
+                     np.mean(self.dt0 [np.append(self.grouping['forward'],self.grouping['backward'])] ) 
+                     )*self.binwidth_ns/1000. # in microseconds
     ##################################################################################################
     # Simple cases: 
     # 1) Assume the prompt is entirely in bin self.nt0. (python convention, the bin index is 0,...,n,... 
@@ -169,61 +165,53 @@ class mugui(object):
     # 2) Assume the prompt is equally distributed between n and n+1. Then self.nt0 = n and self.dt0 = 0.5, the same formula applies
     # 3) Assume the prompt is 0.45 in n and 0.55 in n+1. Then self.nt0 = n+1 and self.dt0 = -0.45, the same formula applies.
     ##################################################################################################
-        else:
-            if self.binwidth_ns != run.get_binWidth_ns(): # includes first run and previous run with different binWidth
-                print('WARNING! You are mixing runs with different resolutions. Not allowed.')
-                return -1 # error code
-            elif (self.numberHisto != run.get_numberHisto_int() or 
-                 self.histoLength+self.nt0.max()+self.offset.value != run.get_histoLength_bin()):
-                print('Mismatch in number and/or length of histograms')
-                print('Analysing this run with the previous might make no sense')
-                ans = question('Proceed anyway')
-                if not ans:
-                    print('To delete previous run(s) type {:}.reset()'.format(self.instance_name))
-                    return -1 # error code
+        # no checks, consistency in binWidth and numberHisto etc are done with run loading
         # calculate asymmetry in y and error in ey
-        yforw = np.zeros(self.time.shape[0]) # counts with background substraction
-        cforw = np.zeros(self.time.shape[0]) # pure counts for Poisson errors
-        ybackw = np.zeros(self.time.shape[0]) # counts with background substraction
-        cbackw = np.zeros(self.time.shape[0]) # pure counts for Poisson errors
+        if which is not None: # multi run, non global, generate just one asymmetry for run k = which
+            k = which
+            run = run[k]
+        for r in run: # equiv to r = self._the_runs_[k] for k in range(self._the_runs_[0])
+            yforw = np.zeros(self.time.shape[0]) # counts with background substraction
+            cforw = np.zeros(self.time.shape[0]) # pure counts for Poisson errors
+            ybackw = np.zeros(self.time.shape[0]) # counts with background substraction
+            cbackw = np.zeros(self.time.shape[0]) # pure counts for Poisson errors
 
-        for detector in self.grouping['forward']:
-            n1, n2 = self.nt0[detector]+self.offset.value, self.nt0[detector]+self.offset.value+self.histoLength
-            histo = run.get_histo_array_int(detector)
-            background = np.mean(histo[self.firstbin:self.lastbin])
-            yforw += histo[n1:n2]-background
-            cforw += histo[n1:n2]
+            for detector in self.grouping['forward']:
+                n1, n2 = self.nt0[detector]+self.offset.value, self.nt0[detector]+self.offset.value+self.histoLength
+                histo = r.get_histo_array_int(detector)
+                background = np.mean(histo[self.firstbin:self.lastbin])
+                yforw += histo[n1:n2]-background
+                cforw += histo[n1:n2]
 
-        for detector in self.grouping['backward']:
-            n1, n2 = self.nt0[detector]+self.offset.value, self.nt0[detector]+self.offset.value+self.histoLength
-            histo = run.get_histo_array_int(detector)
-            background = np.mean(histo[self.firstbin:self.lastbin])
-            ybackw += histo[n1:n2]-background
-            cbackw += histo[n1:n2]
+            for detector in self.grouping['backward']:
+                n1, n2 = self.nt0[detector]+self.offset.value, self.nt0[detector]+self.offset.value+self.histoLength
+                histo = r.get_histo_array_int(detector)
+                background = np.mean(histo[self.firstbin:self.lastbin])
+                ybackw += histo[n1:n2]-background
+                cbackw += histo[n1:n2]
 
-        yplus = yforw + self.alpha.value*ybackw
-        x = np.exp(-self.time/self.TauMu_mus)
-        enn0 = np.polyfit(x,yplus,1)
-        enn0 = enn0[0] # initial rate per ns
-        y = (yforw-self.alpha.value*ybackw)/enn0*np.exp(self.time/self.TauMu_mus)  # since self.time is an np.arange, this is a numpy array
-        ey = np.sqrt(cforw + self.alpha.value**2*cbackw)*np.exp(self.time/self.TauMu_mus)/enn0 # idem
-        ey[np.where(ey==0)] = 1 # substitute zero with one in ey
-        if self._multi_: # the first call of the suite the master, resets binwidth_ns, hence self.firstrun=True 
-            if self.firstrun:
+            yplus = yforw + self.alpha.value*ybackw
+            x = np.exp(-self.time/self.TauMu_mus)
+            enn0 = np.polyfit(x,yplus,1)
+            enn0 = enn0[0] # initial rate per ns
+            y = (yforw-self.alpha.value*ybackw)/enn0*np.exp(self.time/self.TauMu_mus)  # since self.time is an np.arange, this is a numpy array
+            ey = np.sqrt(cforw + self.alpha.value**2*cbackw)*np.exp(self.time/self.TauMu_mus)/enn0 # idem
+            ey[np.where(ey==0)] = 1 # substitute zero with one in ey
+            if self._single_ : # the first call of the suite the master, resets binwidth_ns, hence self.firstrun=True 
                 self.asymm = y # np.array
                 self.asyme = ey # idem
-                self.firstrun = False
-                self.nrun = [run.get_runNumber_int()]
+                self.nrun = [r.get_runNumber_int()]
             else:
-                self.asymm = np.row_stack(self.asymm, y) # columns are times, rows are successive runs
-                self.asyme = np.row_stack(self.asyme, ey)
-                self.nrun.append(run.get_runNumber_int())  # this is a list
-        else:
-            self.asymm = y # np.array
-            self.asyme = ey # idem
-            self.nrun = [run.get_runNumber_int()]
+                if self.firstrun:
+                    self.asymm = y # np.array
+                    self.asyme = ey # idem
+                    self.firstrun = False
+                    self.nrun = [r.get_runNumber_int()]
+                else:
+                    self.asymm = np.row_stack((self.asymm, y)) # columns are times, rows are successive runs
+                    self.asyme = np.row_stack((self.asyme, ey))
+                    self.nrun.append(r.get_runNumber_int())  # this is a list
             
-        # return 0 # no error
 
 ##########################
 # GUI
@@ -242,8 +230,8 @@ class mugui(object):
         image = file.read()
         logo = Image(value=image,format='png',width=132,height=132)
         self.title = Text(description='run title', value='none yet',layout=Layout(width='70%'),disabled=True)
-        self._the_run_display = Text(description='run number',value='no run',layout=Layout(width='30%'),disabled=True)
-        title_content = [self._the_run_display, self.title]
+        self._the_runs_display = Text(description='run number',value='no run',layout=Layout(width='30%'),disabled=True)
+        title_content = [self._the_runs_display, self.title]
         titlerow = HBox(description='Title')
         titlerow.children = title_content
         comment_box = HBox(description='comment',layout=Layout(width='100%'))
@@ -267,7 +255,7 @@ class mugui(object):
         titlelogowindow.children = titlelogowindow_content
 
         # main layout: tabs
-        tabs_contents = ['setup', 'suite', 'fit', 'output', 'fft', 'tlog', 'about']
+        tabs_contents = ['setup', 'suite', 'fit', 'output', 'fft', 'plots', 'about']
         tabs = [VBox(description=name,layout=Layout(border='solid')) for name in tabs_contents]
         self.mainwindow = Tab(children = tabs,layout=Layout(width='99.8%')) # '99.6%' works
 
@@ -290,7 +278,11 @@ class mugui(object):
             '''
             perform fft and plot 
             two options: (partial) residues or full asymmetry
-            two modes: real amplitude or power 
+            two modes: real amplitude or power
+            vectorize for run suites
+            WARNING: relies on self._the_model_._add_ or self._the_model_._fft_add_
+                     to produce the right function for each tun (never checke yet)
+                     insert expected noise level (see bottom comment)
             '''
             import numpy as np
             from mujpy.aux.derange import derange            
@@ -320,8 +312,10 @@ class mugui(object):
             ey = np.hstack((self.asyme[fit_range],np.zeros(n-l))) #  zero padded errors
             ey = ey*filter_apo                              # filtered errors
             dfa = 1/n/dt         # apparent frequency resolution
-            y = self.asymm[fit_range]
-            yf = self._the_model_._add_(self.time[fit_range],*pars) # [best] fit function
+            # asymm, asyme and the model are a row arrays if _single_ and matrices if not _single_
+            y = self.asymm[:][fit_range] # works also on a 1d array
+            yf = self._the_model_._add_(self.time[fit_range],*pars) # [best] fit function, also a matrix
+            filter_apo = np.tile(filter_apo,(y.shape[0],1)) if not self._single_ else filter_apo
 
             if residues_or_asymmetry.value == 'Residues': 
                 fft_include_components = []
@@ -332,15 +326,15 @@ class mugui(object):
                     elif dic['name']!='da': # fft_include_components, besides da, True=include, False=do not  
                         fft_include_components.append(self.fftcheck[j].value) # from the gui FFT checkboxes
                 self._the_model_._fft_init(fft_include_components,fft_include_da)
-                y -=  self._the_model_._fft_add_(self.time[fit_range],*pars) # partial residues
+                y -=  self._the_model_._fft_add_(self.time[fit_range],*pars) # partial residues also a matrix
 
-            y = np.hstack((y,np.zeros(n-l))) #  zero padded  
-            yf = np.hstack((yf,np.zeros(n-l))) #  zero padded
+            y = np.hstack((y,np.zeros((n-l,)))) if self._single_ else np.hstack((y,np.zeros((y.shape[0],n-l))))  #  zero padded  
+            yf = np.hstack((yf,np.zeros((n-l,)))) if self._single_ else np.hstack((yf,np.zeros((yf.shape[0],n-l)))) #  zero padded
             y = y*filter_apo  # filtered 
             yf = yf*filter_apo  # filtered 
 
-            fft_amplitude = np.fft.fft(y)  # amplitudes (complex)
-            fftf_amplitude = np.fft.fft(yf)  # amplitudes (complex)
+            fft_amplitude = np.fft.fft(y)  # amplitudes (complex), if not _single_ this is a matrix with fft of each row
+            fftf_amplitude = np.fft.fft(yf)  # amplitudes (complex), same
             nf = np.hstack((np.linspace(0,l,l+1,dtype=int), np.linspace(-l+1,-1,l-2,dtype=int)))
             f = nf*dfa  # positive frequencies
             rangetup = derange(fft_range.value) # translate freq range into bins
@@ -359,38 +353,42 @@ class mugui(object):
             if real_or_power.value=='Real part':
                 # APPLY PHASE CORRECTION
                 # try acme
-                with self._output_:
-                    fftf_amplitude, p0, p1 = autops(fftf_amplitude,'acme')
-                fft_amplitude = ps(fft_amplitude, p0=p0 , p1=p1)
-
-                self.ax_fft.plot(f,fft_amplitude.real[start:stop],'ro',ms=2)
-                self.ax_fft.plot(f,fftf_amplitude.real[start:stop],'g-',lw=1)
+                if self._single_:
+                    with self._output_:
+                        fftf_amplitude, p0, p1 = autops(fftf_amplitude,'acme') 
+                    fft_amplitude = ps(fft_amplitude, p0=p0 , p1=p1)
+                else:
+                    with self._output_:
+                        fftf_amplitude[0], p0, p1 = autops(fftf_amplitude[0],'acme')
+                    fft_amplitude[0] = ps(fft_amplitude[0], p0=p0 , p1=p1)
+                    f = np.tile(f,(y.shape[0],1)) # create a matrix, same size as fft_amplitude
+                    fft_amplitude[0] = ps(fft_amplitude[0], p0=p0 , p1=p1)
+                    for k in range(1,fft_amplitude.shape[0]):
+                        fft_amplitude[k] = ps(fft_amplitude[k], p0=p0 , p1=p1)
+                        fftf_amplitude[k] = ps(fftf_amplitude[k], p0=p0 , p1=p1)
+                self.ax_fft.plot(f.transpose(),fft_amplitude.real[:][start:stop].transpose(),'ro',ms=2)
+                self.ax_fft.plot(f.transpose(),fftf_amplitude.real[:][start:stop].transpose(),'g-',lw=1)
                 if residues_or_asymmetry.value == 'Residues':
                     self.ax_fft.set_ylabel('FFT Amplitude (Residues/Fit)')
                 else:
                     self.ax_fft.set_ylabel('FFT Amplitude (Asymmetry/Fit)')
             else:
-                fft_power = fft_amplitude.real[start:stop]**2+fft_amplitude.imag[start:stop]**2
-                fftf_power = fftf_amplitude.real[start:stop]**2+fftf_amplitude.imag[start:stop]**2
+                fft_power = fft_amplitude.real[:][start:stop]**2+fft_amplitude.imag[:][start:stop]**2
+                fftf_power = fftf_amplitude.real[:][start:stop]**2+fftf_amplitude.imag[:][start:stop]**2
                 self.ax_fft.plot(f,fft_power,'ro',ms=2)
                 self.ax_fft.plot(f,fftf_power,'g-',lw=1)
                 if residues_or_asymmetry.value == 'Residues':
                     self.ax_fft.set_ylabel('FFT Power (Residues/Fit)')
                 else:
                     self.ax_fft.set_ylabel('FFT Power (Asymmetry/Fit)')
+
             self.fig_fft.canvas.manager.window.tkraise()
 
             P.draw()
 
 
-    # noise in the FFT: data, tn, yn with standard deviations eyn 
-    # FFT ampli am=sum_n yn exp(i wm tn) 
-    # FFT power ap = (sum_n yn exp(i  wn tn))^2
-    # => eam^2=(sum_n |exp(i wm tn)|^2 eyn^2 = sum_n eyn^2 uniform
-    # ea is a distance, hence the radius of one standard deviation
-    # both ai and ar have the same sigma=ea
-    # hence ap has sigma=sqrt(2)*ea 
-#               ea=sqrt(sum(ey.^2))*ones(size(ai)); % noise level
+    # noise in the FFT: with scale=1 noise in n data bins, one gets sqrt(n/2) noise per fft bin, real and imag
+    # generalising to scale=sigma noise in n bins -> sqrt(0.5*sum_i=1^n filter_i)
 
         def on_filter_changed(change):
             '''
@@ -631,7 +629,7 @@ class mugui(object):
 #     help  
 #     load 
 #     save cannot dill a class, rather a selected list of attributes, including:
-#       firstbin, lastbin, offset, nt0, dt0, self._the_model_, _the_run_, _the_suite_, fitargs, ...
+#       firstbin, lastbin, offset, nt0, dt0, self._the_model_, _the_runs_, _the_suite_, fitargs, ...
 #       purpose: load will provide a status ready for a new fit
 
 
@@ -822,28 +820,25 @@ class mugui(object):
             from scipy.special import gammainc
             from mujpy.aux.rebin import rebin
             returntup = derange_int(self.plot_range.value)
-            self.asymmetry(self._the_run_) # prepare asymmetry
+            self.asymmetry(self._the_runs_) # prepare asymmetry, 
+            # which = None (default) is single if self._single_, k for each run in a 2d ndarray multi run
             if len(returntup)==5: # plot start stop packearly last packlate
-                start, stop, packearly, last, packlate = returntup[0], returntup[1], returntup[2], returntup[3], returntup[4]
-                t,y,ey = rebin(self.time[start:stop],
-                                          self.asymm[start:stop],packearly,
-                                          e=self.asyme[start:stop])
-                tlate,ylate,eylate = rebin(self.time[stop:last],
-                                                self.asymm[stop:last],packlate,
-                                                e=self.asyme[stop:last])
-                tfl,dum = rebin(self.time[stop:last],self.asymm[stop:last],1)
+                start, stop, packearly, last, packlate = returntup
+                # if not self._single_ each run is a row in 2d ndarrays y, ey, ylate, eylate
+                t,y,ey = rebin(self.time,self.asymm,[start,stop],packearly,e=self.asyme)
+                tlate,ylate,eylate = rebin(self.time,self.asymm,[stop,last],packlate,e=self.asyme)
+                tfl,dum = rebin(self.time,self.asymm,[stop,last],1)
                 ncols, width_ratios = 3,[2,2,1]
             else:
                 pack = 1
                 ncols, width_ratios = 2,[4,1]
                 if len(returntup)==3: # plot start stop pack
-                    start, stop, pack = returntup[0], returntup[1], returntup[2]
+                    start, stop, pack = returntup
                 elif len(returntup)==2: # plot start stop
-                    start, stop = returntup[0], returntup[1]
-                t,y,ey = rebin(self.time[start:stop],
-                                    self.asymm[start:stop],pack,
-                                    e=self.asyme[start:stop])
-            tf,dum = rebin(self.time[start:stop],self.asymm[start:stop],1)
+                    start, stop = returntup
+                # if not self._single_ each run is a row in 2d ndarrays y, ey
+                t,y,ey = rebin(self.time,self.asymm,[start,stop],pack,e=self.asyme)
+            tf,dum = rebin(self.time,self.asymm,[start,stop],1)
     ###############################
     #  choose pars for fit function
     ###############################
@@ -887,13 +882,22 @@ class mugui(object):
     #############################
             f = self._the_model_._add_(tf,*pars) # tf,f for plot curve
             fres = self._the_model_._add_(t,*pars) # t,fres for residues
-            self.ax_fit[(0,0)].errorbar(t,y,yerr=ey,
-                                        fmt='ro',elinewidth=1.0,ms=2.0) # data
-            self.ax_fit[(0,0)].plot(tf,f,'g-',lw=1.0) # fit
+            if self._single_:
+                yzero = y-y
+                self.ax_fit[(0,0)].errorbar(t,y,yerr=ey,
+                                            fmt='ro',elinewidth=1.0,ms=2.0) # data
+                self.ax_fit[(0,0)].plot(tf,f,'g-',lw=1.0) # fit
+                self.ax_fit[(1,0)].plot(t,y-fres,'r-',lw=1.0) # residues
+            else:
+                yzero = y[0]-y[0]
+                for k in range(y.shape[0]):
+                     self.ax_fit[(0,0)].errorbar(t,y[k],yerr=ey[k],
+                                                fmt='ro',elinewidth=1.0,ms=2.0) # data
+                     self.ax_fit[(0,0)].plot(tf,f[k],'g-',lw=1.0) # fit
+                     self.ax_fit[(1,0)].plot(t,y[k]-fres[k],'r-',lw=1.0) # residues
             self.ax_fit[(0,0)].set_xlim([0, t[-1]])
             # plot residues
-            self.ax_fit[(1,0)].plot(t,y-fres,'r-',lw=1.0) # residues
-            self.ax_fit[(1,0)].plot(t,y-y,'g-',lw=1.0) # zero line
+            self.ax_fit[(1,0)].plot(t,yzero,'g-',lw=1.0) # zero line
     ###############################
     # set title, labels
     ###############################
@@ -904,15 +908,14 @@ class mugui(object):
     ########################
     # chi2 distribution: fit
     ########################
-            fittup = derange_int(self.fit_range.value)
+            fittup = derange_int(self.fit_range.value) # range as tuple
             fit_pack =1
             if len(fittup)==3: # plot start stop pack
                 fit_start, fit_stop, fit_pack = fittup[0], fittup[1], fittup[2]
             elif len(fittup)==2: # plot start stop
                 fit_start, fit_stop = fittup[0], fittup[1]
-            tfit,yfit,eyfit = rebin(self.time[fit_start:fit_stop],
-                                         self.asymm[fit_start:fit_stop],fit_pack,
-                                         e=self.asyme[fit_start:fit_stop])
+            # if not self._single_ each run is a row in 2d ndarrays yfit, eyfit
+            tfit,yfit,eyfit = rebin(self.time,self.asymm,[fit_start,fit_stop],fit_pack,e=self.asyme)
             nufit,ffit,chi2fit = chi(tfit,yfit,eyfit,pars)
             xbin = np.linspace(-5.5,5.5,12)
             self.ax_fit[(1,-1)].hist((yfit-ffit)/eyfit,xbin,
@@ -982,7 +985,7 @@ class mugui(object):
             # or 1:3,5,7 = 1,2,3,5,7  are also valid
             #       get the shorthand from the gui Text 
             groups = ['forward','backward']
-            groupcsv = self.group[groups.index(name)].value # self.group[0,1] are handles to the correspondimg Texts
+            groupcsv = self.group[groups.index(name)].value # self.group[0,1] are handles to the corresponding Texts
             #       now parse groupcsv shorthand
             groupcsv = groupcsv.replace('.',',') # can only be a mistake: '.' means ','
             if groupcsv.find(':')==-1:
@@ -1235,7 +1238,7 @@ class mugui(object):
     ###################
     # error: no run yet
     ###################
-            if not self._the_run_:
+            if not self._the_runs_:
                 norun_msg()  # writes a message in self._output
             else:
     ###################
@@ -1244,13 +1247,12 @@ class mugui(object):
                 pack = 1 # initialize default
                 returntup = derange_int(eval('self.fit_range.value')) 
                 if len(returntup)==3: # 
-                    start, stop, pack = returntup[0], returntup[1], returntup[2]
+                    start, stop, pack = returntup
                 else:
-                    start, stop = returntup[0], returntup[1]
-                self.asymmetry(self._the_run_) # prepare asymmetry
-                time,asymm,asyme = rebin(self.time[start:stop],
-                                              self.asymm[start:stop],pack,
-                                              self.asyme[start:stop])
+                    start, stop = returntup
+                self.asymmetry(self._the_runs_) # prepare asymmetry
+                # which = None is default, fits the single run or the first of a suite
+                time,asymm,asyme = rebin(self.time,self.asymm,[start,stop],pack,e=self.asyme)
                 fitargs, self.minuit_parameter_names = int2min(return_names=True) # from dash
                 self._the_model_._load_data_(time,asymm,int2_int(),self.alpha.value,e=asyme) # pass data to model
     ##############################
@@ -1471,8 +1473,8 @@ class mugui(object):
             strgrp = self.group[0].value.replace(',','_')+'-'+self.group[1].value.replace(',','_')
             path_csv = os.path.join(self.paths[2].value,model.value+'.'+version+'.'+strgrp+'.csv')
 
-            TsTc, eTsTc = self._the_run_.get_temperatures_vector(), self._the_run_.get_devTemperatures_vector()
-            Bstr = self._the_run_.get_field()
+            TsTc, eTsTc = self._the_runs_[0].get_temperatures_vector(), self._the_runs_[0].get_devTemperatures_vector()
+            Bstr = self._the_runs_[0].get_field()
             row = [self.nrun[0], TsTc[0],TsTc[1],eTsTc[0],eTsTc[1],float(Bstr[:Bstr.find('G')])]
             for name in self.minuit_parameter_names:
                 value, error = self.lastfit.fitarg[name], self.lastfit.fitarg['error_'+name]
@@ -1708,6 +1710,112 @@ class mugui(object):
         self.mainwindow.children[3].children = [_output_box] 
                              # add the list of widget handles as the fourth tab, output
 
+################
+# PLOTS
+################
+    def plots(self):
+        '''
+        tlog plot
+        multi plot (if not _single_)
+        '''
+
+        def on_multiplot(b):
+            '''
+            MULTIPLOT:
+            produce plot
+            '''
+            import matplotlib.pyplot as P
+            from numpy import linspace, column_stack,repeat
+            from mujpy.aux.derange import derange_int
+            from mujpy.aux.rebin import rebin
+            returntup = derange_int(multiplot_range.value)
+            # single yields one plot (requires which = None, default)
+            # suite yields multiplot (requires which = None, default)
+            # no use for which = k here
+            self.asymmetry(self._the_runs_) # prepare asymmetry
+            m = self.asymm.ndim
+            pack = 1
+            if len(returntup)==3: # plot start stop packearly last packlate
+                start, stop, pack = returntup
+            else:
+                start, stop = returntup
+            time,asymm = rebin(self.time,self.asymm,[start,stop],pack)
+            #print('start, stop, pack = {},{},{}'.format(start,stop,pack))
+            #print('shape time {}, asymm {}'.format(time.shape,asymm.shape))
+            if m>1:
+                m,n = asymm.shape
+                aoff = float(multiplot_offset.value)*repeat(column_stack(linspace(0,m-1,m)),n,axis=0).transpose()
+                asymm = asymm + aoff
+    ###############################
+    #  set of recover figure, axes 
+    ###############################
+            if self.fig_multiplot: # has been set to a handle once
+                self.fig_multiplot.clf()
+                self.fig_multiplot,self.ax_multiplot = P.subplots(num=self.fig_multiplot.number)
+                self.fig_multiplot.set_size_inches(4+m,4)
+            else: # handle does not exist, make one
+                self.fig_multiplot,self.ax_multiplot = P.subplots(figsize=(4+m,4))
+                self.fig_multiplot.canvas.set_window_title('Multiplot')
+    ##########################
+    #  plot data and fit curve
+    ##########################
+
+            if self._single_:
+                self.ax_multiplot.plot(time,asymm,'o-',lw=0.5,ms=2,alpha=0.5)
+                self.ax_multiplot.plot(time,asymm-asymm,'k-',lw=0.5,alpha=0.5)
+            else:
+                for k in range(m):
+                    self.ax_multiplot.plot(time,asymm[k],'o-',lw=0.5,ms=2,alpha=0.5)
+                    self.ax_multiplot.plot(time,aoff[k],'k-',lw=0.5,alpha=0.5)
+            self.ax_multiplot.set_ylabel('Asymmetry')
+            self.ax_multiplot.set_xlabel(r'time [$\mu$s]')
+            xlow,xhigh = self.ax_multiplot.get_xlim()
+            self.ax_multiplot.set_xlim(xlow,xhigh*9./8.)
+            for k in range(m):
+                self.ax_multiplot.text(xhigh,float(multiplot_offset.value)*k,self._the_runs_[k].get_runNumber_int())
+            self.fig_multiplot.tight_layout()
+            self.fig_multiplot.canvas.manager.window.tkraise()
+
+        def on_range(change):
+            '''
+            observe response of MULTIPLOT range widgets:
+            check for validity of function syntax
+            on_range (PLOTS, FIT, FFT) perhaps made universal and moved to aux
+            '''
+            from mujpy.aux.derange import derange
+
+            change['owner'].description
+            returnedtup = derange(multiplot_range.value) # errors return (-1,-1),(-1,0),(0,-1), good values are all positive
+            if sum(returnedtup)<0:
+                multiplot_range.background_color = "mistyrose"
+                multiplot_range.value = multiplot_range0
+            else:
+                multiplot_range.background_color = "white"
+
+        from ipywidgets import HBox, Button, Text, Textarea, Accordion, Layout
+        multiplot_button = Button(description='Multiplot',layout=Layout(width='15%'))
+        multiplot_button.on_click(on_multiplot)
+        multiplot_button.style.button_color = self.button_color
+        multiplot_range0 = '0,10000,10'
+        multiplot_range = Text(description='plot range\nstart,stop[,pack]',
+                               value=multiplot_range0,layout=Layout(width='18%'),
+                               continuous_update=False)
+        multiplot_range.style.description_width='37%'
+        multiplot_range.observe(on_range,'value')
+        multiplot_offset0 = '0.05'
+        multiplot_offset = Text(description='offset',
+                               value=multiplot_offset0,layout=Layout(width='15%'),
+                               continuous_update=False)
+        multiplot_offset.style.description_width='37%'
+        self.tlog_accordion = Accordion(font_size=10,children=[Textarea(layout={'width':'100%','height':'200px',
+                                                 'overflow_y':'auto','overflow_x':'auto'})])
+        self.tlog_accordion.set_title(0,r'run: T(eT)')
+        self.tlog_accordion.selected_index= None
+        # self.tlog_accordion.layout.height='10'
+
+        multiplot = HBox([multiplot_button,multiplot_range,multiplot_offset,self.tlog_accordion],layout=Layout(width='100%'))
+        self.mainwindow.children[5].children = [multiplot]
+
 ##########################i
 # SETUP
 ##########################
@@ -1819,12 +1927,12 @@ class mugui(object):
             font = {'family' : 'Ubuntu','size'   : 6}
             P.rc('font', **font)
 
-            if not self._the_run_:
+            if not self._the_runs_:
                 norun_msg()
             else:
-                npeaks = np.array([np.where(self._the_run_.get_histo_array_int(det) ==
-                                   self._the_run_.get_histo_array_int(det).max())[0][0] 
-                                   for det in range(self._the_run_.get_numberHisto_int())])
+                npeaks = np.array([np.where(self._the_runs_[0].get_histo_array_int(det) ==
+                                   self._the_runs_[0].get_histo_array_int(det).max())[0][0] 
+                                   for det in range(self._the_runs_[0].get_numberHisto_int())])
                 # approximate positions of peaks
                 nbin =  max(npeaks) + self.second_plateau # this sets a detector dependent second plateau bin interval
                 x = np.arange(0,nbin,dtype=int) # nbin bins from 0 to nbin-1
@@ -1836,13 +1944,13 @@ class mugui(object):
                         self.figt0,self.axt0 = P.subplots(2,3,figsize=(7.5,5),
                                                           num='Prompts fit') 
     
-                x0 = np.zeros(self._the_run_.get_numberHisto_int())
+                x0 = np.zeros(self._the_runs_[0].get_numberHisto_int())
                 if self.first_t0plot:
-                    self.prompt_fit_text = [None]*self._the_run_.get_numberHisto_int()
+                    self.prompt_fit_text = [None]*self._the_runs_[0].get_numberHisto_int()
                     # print(describe(muprompt))
-                for detector in range(self._the_run_.get_numberHisto_int()):
+                for detector in range(self._the_runs_[0].get_numberHisto_int()):
                     # prepare for muprompt fit
-                    histo = self._the_run_.get_histo_array_int(detector)
+                    histo = self._the_runs_[0].get_histo_array_int(detector)
                     p = [ self.peakheight, float(npeaks[detector]), self.peakwidth, 
                           np.mean(histo[self.firstbin:self.lastbin]), 
                           np.mean(histo[np3s:nbin])]
@@ -1903,12 +2011,12 @@ class mugui(object):
             # self.t0plot_results.clear_output()
 
            #with self.t0plot_results:
-            #    print('\n\n\n\nRun: {}'.format(self._the_run_.get_runNumber_int()))
+            #    print('\n\n\n\nRun: {}'.format(self._the_runs_[0].get_runNumber_int()))
             #    print(' Bin nt0')
-            #    for detector in range(self._the_run_.get_numberHisto_int()):
+            #    for detector in range(self._the_runs_[0].get_numberHisto_int()):
             #        print('#{}: {}'.format(detector,self.nt0[detector]))
             #    print('\n\n dt0 (bins)')
-            #    for detector in range(self._the_run_.get_numberHisto_int()):
+            #    for detector in range(self._the_runs_[0].get_numberHisto_int()):
             #        print('#{}: {:.2f}'.format(detector,self.dt0[detector]))
             ##################################################################################################
 
@@ -2030,17 +2138,17 @@ class mugui(object):
            #       self.nt0 roughly set by suite model on_loads_changed
            #       with self._output_:
            #            print('offset = {}, nt0 = {}'.format(offset_bin,self.nt0))
-            for detector in range(self._the_run_.get_numberHisto_int()):
+            for detector in range(self._the_runs_[0].get_numberHisto_int()):
                 n1 = offset_bin+self.nt0[detector] 
                 # if self.nt0 not yet read it is False and totals include prompt
-                histo = self._the_run_.get_histo_array_int(detector)[n1:].sum()
+                histo = self._the_runs_[0].get_histo_array_int(detector)[n1:].sum()
                 tsum += histo
                 if detector in gr:
                     gsum += histo
             #       print ('nt0.sum() = {}'.format(self.nt0.sum()))
             self.totalcounts.value = str(tsum)
             self.groupcounts.value = str(gsum)
-            self.nsbin.value = '{:.3}'.format(self._the_run_.get_binWidth_ns())
+            self.nsbin.value = '{:.3}'.format(self._the_runs_[0].get_binWidth_ns())
 
 
         def derun(string):
@@ -2061,119 +2169,90 @@ class mugui(object):
             '''
             observe response of suite tab widgets:
             load a run via musrpy 
-            single run:
+            single run and run suite unified in a list
                clears run suite
-               loads run
-               sets _multi_ to false
-            run suite version: 
-               clears single run
-               loads suite
-               sets _multi_ to true                 
+               loads run using derun parsing of a string
+                  csv, n:m for range of runs 
+                  [implement n+m+... for run addition]
+               sets _single_ to True if single
             '''
             from mujpy.musr2py.musr2py import musr2py as muload
             import numpy as np
             import os
-            from mujpy.aux.rebin import muzeropad
+            from mujpy.aux.rebin import muzeropad, value_error
 
-            run_or_runs = change['owner'].description # description is either 'Single run' or 'Run  suite'
-            if run_or_runs == loads[0]: # 'Single run'
-                self._multi_ = False # check when introducing suites
-                self._the_run_ = muload() # *** fix a better integration between classes, mugui, mufit, muset, musuite ***
-                # path_and_filename = '' 
+            # rm: run_or_runs = change['owner'].description # description is either 'Single run' or 'Run  suite'
+            self._single_ = True
+            self._the_runs_ = []  # it will be a list of muload() runs
+            self.tlog_accordion.children[0].value=''
+            for k,run in enumerate(derun(self.load_handle[0].value)):# derun parses run suite string
                 filename = ''
-                filename = filename.join([self.filespecs[0].value,muzeropad(self.loads_handles[0].value,
-                                          self._output_),'.',self.filespecs[1].value])
+                filename = filename.join([self.filespecs[0].value,
+                                          muzeropad(run,self._output_),
+                                          '.',self.filespecs[1].value])
                 path_and_filename = os.path.join(self.paths[0].value,filename)
-                                    # data path + filespec + padded run rumber + extension)
-                if self._the_run_.read(path_and_filename) == 1: # error condition, set by musr2py.cpp
+                                # data path + filespec + padded run rumber + extension)
+                self._the_runs_.append(muload())  # this adds to the list a new instance of muload()
+                read_ok = self._the_runs_[k].read(path_and_filename) #
+                if read_ok==1: # error condition, set by musr2py.cpp
                     self.mainwindow.selected_index=3
                     with self._output_:
                         print ('\nFile {} not read. Check paths, filespecs and run rumber on setup tab'.
                                 format(path_and_filename))
+                        break  # this leaves the previous loaded runs n the suite 
                 else:
-                    try:
-                        dummy = self.nt0.sum() # fails if self.nt0 does not exist yet
-                    except: # runs this only if self.nt0 does not exist
-                        self.nt0 = np.zeros(self._the_run_.get_numberHisto_int(),dtype=int)
-                        self.dt0 = np.zeros(self._the_run_.get_numberHisto_int(),dtype=float)
-                        for k in range(self._the_run_.get_numberHisto_int()):
-                            self.nt0[k] = np.where(self._the_run_.get_histo_array_int(k)==
-                                                   self._the_run_.get_histo_array_int(k).max())[0][0]
-                    self.title.value = '{} {} {} {}'.format(self._the_run_.get_sample(),self._the_run_.get_field(),
-                                                            self._the_run_.get_orient(),self._the_run_.get_temp())                    
-                    self.comment_handles[0].value = self._the_run_.get_comment() 
-                    self.comment_handles[1].value = self._the_run_.get_timeStart_vector() 
-                    self.comment_handles[2].value = self._the_run_.get_timeStop_vector()
-                    self._the_run_display.value = str(self._the_run_.get_runNumber_int()) # = self.loads_handles[0].value 
-                    get_totals() # sets totalcounts, groupcounts and nsbin
-                    # self.loads_handles[1].value=''  # just loaded a single run, incompatible with suite
-            else: # multi run
-                self._multi_ = True
-                self._the_runs_ = []  # it will be a list of muload() runs
-                for k,run in enumerate(derun(self.loads_handles[1].value)):# derun parses run suite string
-                    filename = ''
-                    filename = filename.join([self.filespecs[0].value,
-                                              muzeropad(run,self._output_),
-                                              '.',self.filespecs[1].value])
-                    path_and_filename = os.path.join(self.paths[0].value,filename)
-                                    # data path + filespec + padded run rumber + extension)
-                    self._the_runs_.append(muload())  # this adds to the list a new instance of muload()
-                    read_ok = self._the_runs_[k].read(path_and_filename) #
-                    if read_ok==1: # error condition, set by musr2py.cpp
-                        self.mainwindow.selected_index=3
-                        with self._output_:
-                            print ('\nFile {} not read. Check paths, filespecs and run rumber on setup tab'.
-                                    format(path_and_filename))
-                            break  # this leaves the previous loaded runs n the suite 
-                    else:
-                        if k==0:
-                            # title, totals and comments only for master run
-                            self._the_run_ = self._the_runs_[0] # this run becomes the suite master
-                            try:
-                                dummy = self.nt0.sum() # fails if self.nt0 does not exist yet
-                            except: # runs this only if self.nt0 does not exist
-                                self.nt0 = np.zeros(self._the_run_.get_numberHisto_int(),dtype=int)
-                                self.dt0 = np.zeros(self._the_run_.get_numberHisto_int(),dtype=float)
-                                for j in range(self._the_runs_.get_numberHisto_int()):
-                                    self.nt0[j] = np.where(self._the_run_.get_histo_array_int(j)==
-                                                           self._the_run_.get_histo_array_int(j).max())[0][0]
+                    if k==0:
+                        # title, totals and comments only for master run
+                        try:
+                            dummy = self.nt0.sum() # fails if self.nt0 does not exist yet
+                        except: # runs this only if self.nt0 does not exist
+                            self.nt0 = np.zeros(self._the_runs_[0].get_numberHisto_int(),dtype=int)
+                            self.dt0 = np.zeros(self._the_runs_[0].get_numberHisto_int(),dtype=float)
+                            for j in range(self._the_runs_[0].get_numberHisto_int()):
+                                self.nt0[j] = np.where(self._the_runs_[0].get_histo_array_int(j)==
+                                                       self._the_runs_[0].get_histo_array_int(j).max())[0][0]
 
-                            self.title.value = '{} {} {} {}'.format(self._the_run_.get_sample(),
-                                                                    self._the_run_.get_field(),
-                                                                    self._the_run_.get_orient(),
-                                                                    self._the_run_.get_temp())                    
-                            self.comment_handles[0].value = self._the_run_.get_comment() 
-                            self.comment_handles[1].value = self._the_run_.get_timeStart_vector() 
-                            self.comment_handles[2].value = self._the_run_.get_timeStop_vector()
-                            self._the_run_display.value = str(self._the_run_.get_runNumber_int()) # = self.loads_handles[0].value 
-                            get_totals() # sets totalcounts, groupcounts and nsbin
-                        else:
-                            ok = [self._the_runs_[k].get_numberHisto_int() == self._the_run_.get_numberHisto_int(),
-                                  self._the_runs_[k].get_binWidth_ns() == self._the_run_.get_binWidth_ns()]
-                            if not all(ok):
-                                self._the_runs_=[]
-                                # self.loads_handles[1].value=''  # just loaded a single run, incompatible with suite
-                                self.mainwindow.selected_index=3
-                                with self._output_:
-                                    print ('\nFile {} has wrong histoNumber or binWidth'.
-                                            format(path_and_filename))
-                                    break  # this leaves no loaded runs n the suite 
-                 
+                        self.title.value = '{} {} {} {}'.format(self._the_runs_[0].get_sample(),
+                                                                self._the_runs_[0].get_field(),
+                                                                self._the_runs_[0].get_orient(),
+                                                                self._the_runs_[0].get_temp())                    
+                        self.comment_handles[0].value = self._the_runs_[0].get_comment() 
+                        self.comment_handles[1].value = self._the_runs_[0].get_timeStart_vector() 
+                        self.comment_handles[2].value = self._the_runs_[0].get_timeStop_vector()
+                        self._the_runs_display.value = str(self._the_runs_[0].get_runNumber_int())
+                        get_totals() # sets totalcounts, groupcounts and nsbin
+                    else:
+                        self._single_ = False
+                        ok = [self._the_runs_[k].get_numberHisto_int() == self._the_runs_[0].get_numberHisto_int(),
+                              self._the_runs_[k].get_binWidth_ns() == self._the_runs_[0].get_binWidth_ns()]
+                        if not all(ok):
+                            self._the_runs_=[self._the_runs_[0]] # leave just the first one
+                            # self.load_handle[1].value=''  # just loaded a single run, incompatible with suite
+                            self.mainwindow.selected_index=3
+                            with self._output_:
+                                print ('\nFile {} has wrong histoNumber or binWidth'.
+                                        format(path_and_filename))
+                                break  # this leaves the first run of the suite
+                TdT = value_error(self._the_runs_[k].get_temperatures_vector()[self.thermo],
+                                self._the_runs_[k].get_devTemperatures_vector()[self.thermo])
+                self.tlog_accordion.children[0].value += '{}: '.format(self._the_runs_[k].get_runNumber_int())+TdT+' K\n'
+                                
+
+                             
         from ipywidgets import HBox, Layout, Text, Button
 
         # second tab: select run or suite of runs (for sequential or global fits)
         # the tab is self.mainwindow.children[1], a VBox 
         # containing three HBoxes, loads_box, comment_box, speedloads_box
         # path is made of a firstcolumn, paths, and a secondcolumns, filespecs, children of setup_box[0]
-        loads = ['Single run','Run suite'] 
+        # rm: loads = ['Single run','Run suite'] 
         speedloads = ['Next run' 'Load next', 'Load previous', 'Add next', 'Add previous', 'Last added']
-        loads_box = HBox(description='loads',layout=Layout(width='100%'))
+        load_box = HBox(description='loads',layout=Layout(width='100%'))
         speedloads_box = HBox(description='speedloads',layout=Layout(width='100%'))
-        width = ['50%','150%']
-        self.loads_handles = [Text(description=loads[k],layout=Layout(width=width[k]),continuous_update=False) 
-                              for k in range(len(loads))]
-        self.loads_handles[0].observe(on_loads_changed,'value')
-        self.loads_handles[1].observe(on_loads_changed,'value')
+        self.load_handle = [Text(description='Run[run suite]:       \nsingle run\ne.g 431\nor run suites\ne.g. 431, 435:439, 443+444',
+                              layout=Layout(width='100%'),continuous_update=False)]
+        self.load_handle[0].style.description_width='11%'
+        self.load_handle[0].observe(on_loads_changed,'value')
         # the following doesn't work yet
         Ln_button = Button(description='Load nxt')
         Ln_button.style.button_color = self.button_color
@@ -2186,10 +2265,10 @@ class mugui(object):
         self.speedloads_handles = [Text(description='Next run',disabled=True),
                                    Ln_button, Lp_button, An_button, Ap_button, 
                                    Text(description='Last add',disabled=True)]
-        loads_box.children = self.loads_handles
+        load_box.children = self.load_handle
         speedloads_box.children = self.speedloads_handles
 
-        self.mainwindow.children[1].children = [loads_box, speedloads_box] # second tab (suite)
+        self.mainwindow.children[1].children = [load_box, speedloads_box] # second tab (suite)
 
     def introspect(self):
         '''

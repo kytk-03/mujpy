@@ -1,37 +1,3 @@
-##########################
-# REBIN
-##########################
-def rebin(x,y,pack,e=None):
-    '''
-    use either 
-    xb,yb = rebin(x,y,pack)
-    or
-    xb,yb,eyb = rebin(x,y,pack,ey) # the 4rd is an error
-    Works also with pack = 1
-    '''
-    from numpy import floor, sqrt
-    if pack==1:
-        if e is None:
-            return x,y
-        else:
-            return x,y,e
-    else:
-        m = int(floor(len(x)/pack))
-        mn = m*pack
-        xx = x[:mn]
-        xx = xx.reshape(m,pack)
-        yy = y[:mn]
-        yy = yy.reshape(m,pack)
-        xb = xx.sum(1)/pack
-        yb = yy.sum(1)/pack
-        if e is not None:
-            ey = e[:mn]
-            ey = ey.reshape(m,pack)
-            eb = sqrt((ey**2).sum(1))/pack
-            return xb,yb,eb
-        else:
-            return xb,yb
-
 def muzeropad(runs,out):
     '''
     muzeropad(runs,out)
@@ -56,4 +22,75 @@ def muzeropad(runs,out):
         with out:
             print('Too long run number!')
         return []
+
+def rebin(x,y,strstp,pack,e=None):
+    '''
+    use either 
+    xb,yb = rebin(x,y,strstp,pack)
+    or
+    xb,yb,eyb = rebin(x,y,strstp,pack,ey) # the 5th is an error
+    Works also with pack = 1
+    Must allow for each run being a row in 2d ndarrays y, ey
+
+    '''
+    from numpy import floor, sqrt,empty, array
+    start,stop = strstp
+    ydim = y.ndim
+    if pack==1:
+        xx = array(x[start:stop])
+        yy = array(y[start:stop]) if ydim==1 else array(y[:,start:stop])
+        # print('in rebin: shape xx {}, yy {}'.format(xx.shape,yy.shape)) 
+        if e is None: # no rebinning, just a slice
+            return xx,yy
+        else:
+            ee = array(e[start:stop]) if ydim==1 else array(e[:,start:stop])
+            return xx,yy,ee
+    else:
+        m = int(floor((stop-start)/pack)) # length of rebinned xb
+        mn = m*pack # length of x slice 
+        xx = x[start:start+mn] # slice of the first 1-dimensional ndarray
+        xx = xx.reshape(m,pack) # temporaty 2d array
+        xb = xx.sum(1)/pack # rebinned first ndarray
+        if ydim == 1: # single 
+            yy = y[start:start+mn]  # slice 1-d
+            yy = yy.reshape(m,pack)  # temporaty 2d 
+            yb = yy.sum(1)/pack   # rebinned 1-d
+            if e is not None:
+                ey = e[start:start+mn]  # slice 1-d
+                ey = ey.reshape(m,pack)  # temporaty 2d
+                eb = sqrt((ey**2).sum(1))/pack  # rebinned 1-d
+        else: # suite
+            yb = empty((ydim,m))
+            if e is not None:
+                eb = empty((ydim,m))
+            for k in range(y.shape[0]): # each row is a run
+                yy = y[k][start:start+mn]  # slice row
+                yy = yy.reshape(m,pack)  # temporaty 2d
+                yb[k] = yy.sum(1)/pack # rebinned row
+                if e is not None:
+                    ey = e[k][start:start+mn]   # slice row
+                    ey = ey.reshape(m,pack)  # temporaty 2d
+                    eb[k] = sqrt((ey**2).sum(1))/pack  # rebinned row
+        if e is not None:
+            return xb,yb,eb
+        else:
+            return xb,yb
+
+def value_error(value,error):
+    '''
+    value_error(v,e)
+    returns a string of the format v(e) 
+    '''
+    from numpy import floor, log10
+    exponent = int(floor(log10(error)))  
+    most_significant = int(round(error/10**exponent))
+    if most_significant>9:
+        exponent += 1
+        most_significant=1
+    exponent = -exponent if exponent<0 else 0
+    form = '"{:.'
+    form += '{}'.format(exponent)
+    form += 'f}({})".format(value,most_significant)'
+    return eval(form)
+
 
