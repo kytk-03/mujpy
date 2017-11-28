@@ -91,11 +91,11 @@ class mugui(object):
         try:
             whereamI = get_ipython().__class__
             if not str(whereamI).find('erminal')+1:
-                display(self.gui)
+                display(self.gui) # you are in a Jupyter notebook
             else:
-                print(str(wheremI)) 
+                print(str(wheremI)) # you are in an ipython terminal
         except:
-                print('Python test script')
+                print('Python test script') # other option?
 
         def _eval(string):
             '''
@@ -235,16 +235,17 @@ class mugui(object):
         titlerow = HBox(description='Title')
         titlerow.children = title_content
         comment_box = HBox(description='comment',layout=Layout(width='100%'))
-        self.comment_handles = [Text(description='Comment',layout=Layout(width='30%'),disabled=True),
-                                Text(description='Start date',layout=Layout(width='30%'),disabled=True),
-                                Text(description='Stop date',layout=Layout(width='30%'),disabled=True)]
+        self.comment_handles = [Text(description='Comment',layout=Layout(width='46%'),disabled=True),
+                                Text(description='Start date',layout=Layout(width='27%'),disabled=True),
+                                Text(description='Stop date',layout=Layout(width='27%'),disabled=True)]
         comment_box.children = self.comment_handles
         counts = ['Total counts', 'Group counts','ns/bin'] # needs an HBox with three Text blocks
-        self.totalcounts = Text(value='0',description='Total counts',layout=Layout(width='40%'),disabled=True)
-        self.groupcounts = Text(value='0',description='Group counts',layout=Layout(width='40%'),disabled=True)
+        self.totalcounts = Text(value='0',description='Total counts',layout=Layout(width='30%'),disabled=True)
+        self.groupcounts = Text(value='0',description='Group counts',layout=Layout(width='30%'),disabled=True)
         self.nsbin = Text(description='ns/bin',layout=Layout(width='20%'),disabled=True)
+        self.maxbin = Text(description='Last bin',layout=Layout(width='20%'),disabled=True)
         secondrow = HBox(description='counts',layout=Layout(width='100%'))
-        secondrow.children = [self.totalcounts, self.groupcounts, self.nsbin]
+        secondrow.children = [self.totalcounts, self.groupcounts, self.nsbin, self.maxbin]
         # self._output_ = Output(layout=Layout(width='100%'))
         # thirdrow = HBox([self._output_],layout=Layout(height='60px',width='100%',overflow_y='scroll',overflow_x='scroll')) # x works y does scroll
         titlewindow = VBox()
@@ -259,7 +260,7 @@ class mugui(object):
         tabs = [VBox(description=name,layout=Layout(border='solid')) for name in tabs_contents]
         self.mainwindow = Tab(children = tabs,layout=Layout(width='99.8%')) # '99.6%' works
 
-        self.mainwindow.selected_index=0 # to stipulate that the first display is on tab 0, setup
+        self.mainwindow.selected_index = 0 # to stipulate that the first display is on tab 0, setup
         for i in range(len(tabs_contents)):
             self.mainwindow.set_title(i, tabs_contents[i])
         #
@@ -294,7 +295,7 @@ class mugui(object):
 
             if not self.lastfit:
                 with self._output_:
-                    self.mainwindow.selected_index=3
+                    self.mainwindow.selected_index = 3
                     print('No fit yet. Please first produce a fit attempt.')
                 return
             pars = [self.lastfit.fitarg[name] for name in self.minuit_parameter_names]
@@ -705,7 +706,7 @@ class mugui(object):
                 self.model_components.append({'name':name,'pars':pars})
                 return True # OK code
             else:
-                self.mainwindow.selected_index=3
+                self.mainwindow.selected_index = 3
                 with self._output_:
                     print ('\nWarning: '+name+' is not a known component. Not added.\n'+
                            'With myfit = mufit(), type myfit.help to see the available components')
@@ -772,7 +773,7 @@ class mugui(object):
                 elif len(values)==2:
                     return values[0],values[1] # start, stop
             except:
-                self.mainwindow.selected_index=3
+                self.mainwindow.selected_index = 3
                 with self._output_:
                     print("provide comma or space separated numbers, please")
                 return -1,-1 
@@ -988,12 +989,12 @@ class mugui(object):
             groupcsv = self.group[groups.index(name)].value # self.group[0,1] are handles to the corresponding Texts
             #       now parse groupcsv shorthand
             groupcsv = groupcsv.replace('.',',') # can only be a mistake: '.' means ','
-            if groupcsv.find(':')==-1:
-                # colon not found, csv only
-                self.grouping[name] = np.array([int(s) for s in groupcsv.split(',')])
-            else:
-                # colon found
-                try:
+            try:
+                if groupcsv.find(':')==-1:
+                    # colon not found, csv only
+                    self.grouping[name] = np.array([int(s) for s in groupcsv.split(',')])
+                else:
+                    # colon found                 
                     if groupcsv.find(',')+groupcsv.find(':')==-2:
                         self.grouping[name] = np.array([int(groupcsv)])
                     elif groupcsv.find(',')+1: # True if found, False if not found (not found yields -1)    
@@ -1014,9 +1015,11 @@ class mugui(object):
                         lst = int(groupcsv[groupcsv.find(':')+1:])
                         self.grouping[name] = np.arange(fst,lst+1,dtype=int)
                     self.grouping[name] -=1 # python starts at 0
-                except:
+            except:
+                with self._output_:
                     print('Wrong group syntax: {}'.format(self.group[groups.index(name)].value))
-                    self.group[groups.index(name)].value = ''
+                self.group[groups.index(name)].value = ''
+                self.mainwindow.selected_index = 3
     
         def int2_int():
             '''
@@ -1146,11 +1149,12 @@ class mugui(object):
                     self.parvalue[k].value = fit_dict['_parvalue['+str(k)+']']  
                     self.flag[k].value = fit_dict['_flag['+str(k)+    ']']  
                     self.function[k].value = fit_dict['_function['+str(k)+']'] 
-                self.mainwindow.selected_index=2
+                self.mainwindow.selected_index = 3
 
             except Exception as e:
-                print('Problems with reading {} file\n\nException: {}'.format(path_and_filename,e))
-
+                with self._output_:
+                    print('Problems with reading {} file\n\nException: {}'.format(path_and_filename,e))
+                self.mainwindow.selected_index = 3
 
         def min2int(fitargs):
             '''
@@ -1199,12 +1203,14 @@ class mugui(object):
             try: 
                 safetry(test) # should select only safe use (although such a thing does not exist!)
             except Exception as e:
-                print('function: {}. Tested: {}. Wrong or not allowed syntax: {}'.format(string,test,e))
+                with self._output_:
+                    print('function: {}. Tested: {}. Wrong or not allowed syntax: {}'.format(string,test,e))
+                self.mainwindow.selected_index = 3
                 valid = False
             return valid
 
         def norun_msg():
-            self.mainwindow.selected_index=3
+            self.mainwindow.selected_index = 3
             with self._output_:
                  print('No run loaded yet! Load one first (select suite tab).')
 
@@ -1274,7 +1280,7 @@ class mugui(object):
                         print('chi2_r = {:.4f} ({:.4f} - {:.4f}). Saved results in  {}'.format(chi2,lc,hc,path))
                     else:
                         print('chi2_r = {:.4f} ({:.4f} - {:.4f}). Could not save results to '.format(chi2,lc,hc,path))
-                self.mainwindow.selected_index=3  # focus on output tab
+                self.mainwindow.selected_index = 3  # focus on output tab
 
 
          
@@ -1325,7 +1331,7 @@ class mugui(object):
                 except:
                     pass
                 self.fit(change['new']) # restart the gui with a new model
-                self.mainwindow.selected_index=2
+                self.mainwindow.selected_index = 2
             else:
                 loadmodel.value=''
 
@@ -1373,8 +1379,15 @@ class mugui(object):
             else:
                 if name == 'fit':
                     self.fit_range.background_color = "white"
+                    if len(returnedtup)==5:
+                        if returnedtup[4]>self.histoLength:
+                            change['owner'].value=str(returnedtup[:-1],self.histoLength)        
+                    if returnedtup[1]>self.histoLength:
+                        change['owner'].value=str(returnedtup[0],self.histoLength) if len(returnedtup)==2 else str(retrunedtup[0],self.histoLength,returnedtup[2:])         
                 else:
                     self.plot_range.background_color = "white"
+                    if returnedtup[1]>self.histoLength:
+                        change['owner'].value=str(returnedtup[0],self.histoLength) if len(returnedtup)==2 else str(retrunedtup[0],self.histoLength,returnedtup[2])         
 
         def on_update(b):
             '''
@@ -1572,7 +1585,8 @@ class mugui(object):
         fit_button = Button (description='Fit',layout=Layout(width='6%'))
         fit_button.style.button_color = self.button_color
         fit_button.on_click(on_fit_request)
-        self.fit_range = Text(description='fit range\nstart,stop[,pack]',value='0,10000',layout=Layout(width='18%'),continuous_update=False)
+        fit_range0 = '0,8000'
+        self.fit_range = Text(description='fit range\nstart,stop[,pack]',value=fit_range0,layout=Layout(width='18%'),continuous_update=False)
         self.fit_range.style.description_width='37%'
         self.fit_range.observe(on_range,'value')
         plot_button = Button (description='Plot',layout=Layout(width='6%'))
@@ -1701,7 +1715,7 @@ class mugui(object):
         '''
         create an Output widget in fourth tab       
         select by 
-        self.mainwindow.selected_index=3
+        self.mainwindow.selected_index = 3
         '''
         from ipywidgets import Output, HBox, Layout 
                      # Output(layout={'height': '100px', 'overflow_y': 'auto', 'overflow_x': 'auto'})
@@ -1752,9 +1766,9 @@ class mugui(object):
             if self.fig_multiplot: # has been set to a handle once
                 self.fig_multiplot.clf()
                 self.fig_multiplot,self.ax_multiplot = P.subplots(num=self.fig_multiplot.number)
-                self.fig_multiplot.set_size_inches(4+m,4)
+                self.fig_multiplot.set_size_inches(5,4+m)
             else: # handle does not exist, make one
-                self.fig_multiplot,self.ax_multiplot = P.subplots(figsize=(4+m,4))
+                self.fig_multiplot,self.ax_multiplot = P.subplots(figsize=(5,+m))
                 self.fig_multiplot.canvas.set_window_title('Multiplot')
     ##########################
     #  plot data and fit curve
@@ -1791,12 +1805,14 @@ class mugui(object):
                 multiplot_range.value = multiplot_range0
             else:
                 multiplot_range.background_color = "white"
+                if returnedtup[1]>self.histoLength:
+                    change['owner'].value=str(returnedtup[0],self.histoLength) if len(returnedtup)==2 else str(retrunedtup[0],self.histoLength,returnedtup[2])         
 
         from ipywidgets import HBox, Button, Text, Textarea, Accordion, Layout
         multiplot_button = Button(description='Multiplot',layout=Layout(width='15%'))
         multiplot_button.on_click(on_multiplot)
         multiplot_button.style.button_color = self.button_color
-        multiplot_range0 = '0,10000,10'
+        multiplot_range0 = '0,8000,10'
         multiplot_range = Text(description='plot range\nstart,stop[,pack]',
                                value=multiplot_range0,layout=Layout(width='18%'),
                                continuous_update=False)
@@ -1807,10 +1823,10 @@ class mugui(object):
                                value=multiplot_offset0,layout=Layout(width='15%'),
                                continuous_update=False)
         multiplot_offset.style.description_width='37%'
-        self.tlog_accordion = Accordion(font_size=10,children=[Textarea(layout={'width':'100%','height':'200px',
+        self.tlog_accordion = Accordion(children=[Textarea(layout={'width':'100%','height':'200px',
                                                  'overflow_y':'auto','overflow_x':'auto'})])
         self.tlog_accordion.set_title(0,r'run: T(eT)')
-        self.tlog_accordion.selected_index= None
+        self.tlog_accordion.selected_index = None
         # self.tlog_accordion.layout.height='10'
 
         multiplot = HBox([multiplot_button,multiplot_range,multiplot_offset,self.tlog_accordion],layout=Layout(width='100%'))
@@ -1830,7 +1846,7 @@ class mugui(object):
 
         def load_setup(b):
             """
-            when user presse this setup tab widget:
+            when user presses this setup tab widget:
             loads mujpy_setup.pkl with saved attributes
             and replaces them in setup tab Text widgets
             """
@@ -1843,7 +1859,9 @@ class mugui(object):
                 with open(path,'rb') as f:
                     mujpy_setup = pickle.load(f) 
             except:
-                print('File {} not found'.format(path))
+                with self._output_:
+                    print('File {} not found'.format(path))
+                self.mainwindow.selected_index = 3
             # _paths_content = [ self.paths[k].value for k in range(3) ] # should be 3 ('data','tlag','analysis')
             # _filespecs_content = [ self.filespecs[k].value for k in range(2) ] # should be 2 ('fileprefix','extension')
             # _prepostpk = [self.prepostpk[k].value for k in range(2)] # 'pre-prompt bin','post-prompt bin' len(bkg_content)
@@ -1861,7 +1879,9 @@ class mugui(object):
                 self.lastbin = mujpy_setup['self.lastbin'] # fraction of bin, nd.array of shape run.get_numberHisto_int()
                 return 0
             except Exception as e:
-                print('Error in load_setup: {}'.format(e)) 
+                with self._output_:
+                    print('Error in load_setup: {}'.format(e)) 
+                self.mainwindow.selected_index = 3
                 return -1   
  
 
@@ -1882,9 +1902,7 @@ class mugui(object):
             k = paths_content.index(path) # paths_content.index(path) is 0,1,2 for paths_content = 'data','tlog','analysis'
             directory = self.paths[k].value # self.paths[k] = handles of the corresponding Text
             if not os.path.isdir(directory):
-                print('Path {} is unreachable'.format(directory))  
-                
-                if k==2: # analysis, if it does not exixt mkdir
+                if k==2: # analysis, if it does not exist mkdir
                     # eventualmente togli ultimo os.path.sep = '/' in directory
                     dire=directory
                     if dire.rindex(os.path.sep)==len(dire):
@@ -1896,12 +1914,22 @@ class mugui(object):
                     try:
                         os.stat(prepath)
                         os.mkdir(dire+os.path.sep)
-                        print ('Analysis path {} created'.format(directory))
+                        with self._output_:
+                            print ('Analysis path {} created'.format(directory))
                         # self.paths[k].value = dire+os.path.sep # not needed if path is made with os.path.join 
+                        self.mainwindow.selected_index = 3                
                     except:
                         self.paths[k].value = os.path.curdir
+                        with self._output_:
+                            print ('Analysis path {} does not exist and cannot be created'.format(directory))
+                        # self.paths[k].value = dire+os.path.sep # not needed if path is made with os.path.join 
+                        self.mainwindow.selected_index = 3                
                 else:
                     self.paths[k].value = os.path.curdir
+                    with self._output_:
+                        print ('Path {} does not exist, reset to .'.format(directory))
+                    # self.paths[k].value = dire+os.path.sep # not needed if path is made with os.path.join 
+                    self.mainwindow.selected_index = 3                
  
         def on_prompt_fit_click(b):
             '''
@@ -1924,7 +1952,7 @@ class mugui(object):
             import matplotlib.pyplot as P
             from mujpy.mucomponents.muprompt import muprompt
 
-            font = {'family' : 'Ubuntu','size'   : 6}
+            font = {'family' : 'Ubuntu','size'   : 8}
             P.rc('font', **font)
 
             if not self._the_runs_:
@@ -2007,6 +2035,8 @@ class mugui(object):
             self.nt0 = x0.round().astype(int) # bin of peak, nd.array of shape run.get_numberHisto_int() 
             self.dt0 = x0-self.nt0 # fraction of bin, nd.array of shape run.get_numberHisto_int() 
             self.lastbin = self.nt0.min() - self.prepostpk[0].value # nd.array of shape run.get_numberHisto_int() 
+            nt0_dt0.children[0].children[0].value = ' '.join(map(str,self.nt0.astype(int)))
+            nt0_dt0.children[0].children[1].value = ' '.join(map('{:.2f}'.format,self.dt0))
                                                    # refresh, they may be slightly adjusted by the fit
             # self.t0plot_results.clear_output()
 
@@ -2020,9 +2050,48 @@ class mugui(object):
             #        print('#{}: {:.2f}'.format(detector,self.dt0[detector]))
             ##################################################################################################
 
+        def save_log(b):
+            """
+            when user presses this setup tab buttont:
+            saves ascii file .log with run list in data directory
+            """
+            import os
+            from glob import glob
+            from mujpy.musr2py.musr2py import musr2py as muload
+            from mujpy.aux.rebin import value_error
+
+            run_files = sorted(glob(os.path.join(self.paths[0].value, '*.bin')))
+            run = muload()
+            run.read(run_files[0])
+            filename=run.get_sample()+'.log'
+            nastychar=list(' #%&{}\<>*?/$!'+"'"+'"'+'`'+':@')
+            for char in nastychar:
+                filename = "_".join(filename.split(char))
+            path_file = os.path.join(self.paths[0].value, filename) # set to [2] for analysis
+            with open (path_file,'w') as f:
+                        #7082  250.0  250.0(1)   3   4.8  23:40:52 17-DEC-12  PSI8KMnFeF  Powder   PSI 8 K2.5Mn2.5Fe2.5F15, TF cal 30G, Veto ON, SR ON
+                f.write("Run\tT_nom/T_meas(K)\t\tB(mT)\tMev.\tStart Time & Date\tSample\t\tOrient.\tComments\n\n")
+                for run_file in run_files:
+                    run.read(run_file)
+                    TdT = value_error(run.get_temperatures_vector()[self.thermo],
+                                      run.get_devTemperatures_vector()[self.thermo])
+                    tsum = 0
+                    for detector in range(run.get_numberHisto_int()):
+                        histo = run.get_histo_array_int(detector).sum()
+                        tsum += histo
+                    BmT = float(run.get_field().strip()[:-1])/10. # convert to mT, avoid last chars 'G '
+                    Mev = float(tsum)/1.e6
+                            #Run T  TdT  BmT     Mev    Date   sam or com
+                    f.write('{}\t{}/{}\t{:.1f}\t{:.1f}\t{}\t{}\t{}\t{}\n'.format(run.get_runNumber_int(),
+                                      run.get_temp(), TdT, BmT, Mev, run.get_timeStart_vector(),
+                                      run.get_sample().strip(), run.get_orient().strip(), run.get_comment().strip() ))
+            with self._output_:
+                print('Saved logbook {}'.format(path_file))
+            self.mainwindow.selected_index = 3
+
         def save_setup(b):
             """
-            when user presses this setup tab widget:
+            when user presses this setup tab button:
             saves mujpy_setup.pkl with setup tab values
             """
             import dill as pickle
@@ -2040,10 +2109,9 @@ class mugui(object):
                setup_dict[names[k]] = eval(key) # key:value
             with open(path,'wb') as f:
                 pickle.dump(setup_dict, f) # according to __getstate__()
-            self.mainwindow.selected_index=3
+            self.mainwindow.selected_index = 3
             with self._output_:
                 print('Saved {}'.format(os.path.join(self.__startuppath__,'mujpy_setup.pkl')))
-
 
         from ipywidgets import HBox, Layout, VBox, Text, IntText, Checkbox, Button, Output, Accordion   
         from numpy import array 
@@ -2094,22 +2162,25 @@ class mugui(object):
         load_button.on_click(load_setup)
         nt0_dt0 = Accordion(font_size=12,children=[HBox(children=[Text(description='t0 [bins]'), Text(description='dt0 [bins]')])])#,layout={'height':'22px'})
         nt0_dt0.set_title(0,'t0 bins and remainders')
-        nt0_dt0.selected_index= None
+        nt0_dt0.selected_index =  None
         introspect_button = Button(description='Introspect',layout=Layout(width='15%'))
         introspect_button.on_click(on_introspect)
         introspect_button.style.button_color = self.button_color
+        log_button = Button(description='Data log',layout=Layout(width='15%'))
+        log_button.on_click(save_log)
+        log_button.style.button_color = self.button_color 
 
         self.t0plot_container = Output(layout=Layout(width='85%'))     
         self.t0plot_results = Output(layout=Layout(width='15%')) 
         setup_hbox[0].children = [paths_box, filespecs_box]
         setup_hbox[1].children = prompt_fit
-        setup_hbox[2].children = [nt0_dt0,introspect_button]
+        setup_hbox[2].children = [nt0_dt0,introspect_button,log_button]
         setup_hbox[3].children = [self.t0plot_container,self.t0plot_results]
         self.nt0,self.dt0 = array([0.]),array([0.])
         load_setup([])
         nt0_dt0.children[0].children[0].value = ' '.join(map(str,self.nt0.astype(int)))
         nt0_dt0.children[0].children[1].value = ' '.join(map('{:.2f}'.format,self.dt0))
-            
+
 
 ##########################
 # SUITE
@@ -2149,6 +2220,7 @@ class mugui(object):
             self.totalcounts.value = str(tsum)
             self.groupcounts.value = str(gsum)
             self.nsbin.value = '{:.3}'.format(self._the_runs_[0].get_binWidth_ns())
+            self.maxbin.value = str(self.histoLength)
 
 
         def derun(string):
@@ -2195,7 +2267,7 @@ class mugui(object):
                 self._the_runs_.append(muload())  # this adds to the list a new instance of muload()
                 read_ok = self._the_runs_[k].read(path_and_filename) #
                 if read_ok==1: # error condition, set by musr2py.cpp
-                    self.mainwindow.selected_index=3
+                    self.mainwindow.selected_index = 3
                     with self._output_:
                         print ('\nFile {} not read. Check paths, filespecs and run rumber on setup tab'.
                                 format(path_and_filename))
@@ -2220,6 +2292,16 @@ class mugui(object):
                         self.comment_handles[1].value = self._the_runs_[0].get_timeStart_vector() 
                         self.comment_handles[2].value = self._the_runs_[0].get_timeStop_vector()
                         self._the_runs_display.value = str(self._the_runs_[0].get_runNumber_int())
+                        if len(self.nt0)!=self._the_runs_[0].get_numberHisto_int(): # reset nt0,dt0
+                            self.nt0 = np.zeros(self._the_runs_[0].get_numberHisto_int(),dtype=int)
+                            self.dt0 = np.zeros(self._the_runs_[0].get_numberHisto_int(),dtype=float)
+                            for j in range(self._the_runs_[0].get_numberHisto_int()):
+                                self.nt0[j] = np.where(self._the_runs_[0].get_histo_array_int(j)==
+                                                       self._the_runs_[0].get_histo_array_int(j).max())[0][0]
+                            with self._output_:
+                                print('WARNING! Run {} mismatch in number of detectors, rerun prompt fit'.format(self._the_runs_[0].get_runNumber_int())) 
+                            self.mainwindow.selected_index = 3
+                        self.histoLength = self._the_runs_[0].get_histoLength_bin() - self.nt0.max() - self.offset.value # max available bins on all histos
                         get_totals() # sets totalcounts, groupcounts and nsbin
                     else:
                         self._single_ = False
@@ -2228,7 +2310,7 @@ class mugui(object):
                         if not all(ok):
                             self._the_runs_=[self._the_runs_[0]] # leave just the first one
                             # self.load_handle[1].value=''  # just loaded a single run, incompatible with suite
-                            self.mainwindow.selected_index=3
+                            self.mainwindow.selected_index = 3
                             with self._output_:
                                 print ('\nFile {} has wrong histoNumber or binWidth'.
                                         format(path_and_filename))
