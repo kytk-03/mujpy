@@ -57,16 +57,18 @@ class mugui(object):
 # mujpy layout
         self.button_color = 'lightgreen'
         self.thermo = 1 # sample thermometer is 0?
+# initializations
+        self.nt0_run = []
 
         #####################################
         # actually produces the gui interface
         #####################################
 
         self.gui()
+        self.output() # this calls output(self) that defines self._output_
         self.setup()
         self.suite()
         self.fit()
-        self.output() # this calls output(self) that defines self._output_
         self.fft()
         self.plots()
 
@@ -212,6 +214,22 @@ class mugui(object):
                     self.asyme = np.row_stack((self.asyme, ey))
                     self.nrun.append(r.get_runNumber_int())  # this is a list
             
+##########################
+# CREATE_RUNDICT
+##########################
+    def create_rundict(self,k=0):
+        '''
+        creates a dictionary to identify and compare runs
+        '''
+        rundict={}
+        instrument = self.filespecs[0].value.split('_')[2] # valid for psi with standard names 'deltat_tdc_gpd_xxxx.bin'
+        rundict.update({'nrun':self._the_runs_[k].get_runNumber_int()})
+        rundict.update({'date':self._the_runs_[k].get_timeStart_vector()})
+        rundict.update({'nhist':self._the_runs_[k].get_numberHisto_int()})
+        rundict.update({'histolen':self._the_runs_[k].get_histoLength_bin()})
+        rundict.update({'binwidth':self._the_runs_[k].get_binWidth_ns()})
+        rundict.update({'instrument':instrument})
+        return rundict
 
 ##########################
 # GUI
@@ -219,9 +237,13 @@ class mugui(object):
     def gui(self):
         '''
         gui layout
-        designs external frame, 
-                logo and title header
-                tab structure
+        Executed only once
+        It designs an external frame, 
+                the logo and title header
+                the tab structure.
+        At the end (Araba.Phoenix) the method redefines self.gui 
+        as a Vbox named 'whole', 
+        that contains the entire gui structure
         '''
         from ipywidgets import Image, Text, Layout, HBox, Output, VBox, Tab
         import os                      
@@ -246,8 +268,6 @@ class mugui(object):
         self.maxbin = Text(description='Last bin',layout=Layout(width='20%'),disabled=True)
         secondrow = HBox(description='counts',layout=Layout(width='100%'))
         secondrow.children = [self.totalcounts, self.groupcounts, self.nsbin, self.maxbin]
-        # self._output_ = Output(layout=Layout(width='100%'))
-        # thirdrow = HBox([self._output_],layout=Layout(height='60px',width='100%',overflow_y='scroll',overflow_x='scroll')) # x works y does scroll
         titlewindow = VBox()
         titlewindow_content = [titlerow, comment_box, secondrow] # ,thirdrow (moved to 4th tab)
         titlewindow.children = titlewindow_content
@@ -263,7 +283,7 @@ class mugui(object):
         self.mainwindow.selected_index = 0 # to stipulate that the first display is on tab 0, setup
         for i in range(len(tabs_contents)):
             self.mainwindow.set_title(i, tabs_contents[i])
-        #
+        # Araba.Phoenix:
         self.gui = VBox(description='whole',layout=Layout(width='100%'))
         self.gui.children = [titlelogowindow, self.mainwindow]
 
@@ -1877,6 +1897,7 @@ class mugui(object):
                 self.nt0 = mujpy_setup['self.nt0'] # bin of peak, nd.array of shape run.get_numberHisto_int()
                 self.dt0 = mujpy_setup['self.dt0'] # fraction of bin, nd.array of shape run.get_numberHisto_int()
                 self.lastbin = mujpy_setup['self.lastbin'] # fraction of bin, nd.array of shape run.get_numberHisto_int()
+                self.nt0_run = mujpy_setup['self.nt0_run'] # dictionary to identify runs belonging to the same setup
                 return 0
             except Exception as e:
                 with self._output_:
@@ -2035,6 +2056,8 @@ class mugui(object):
             self.nt0 = x0.round().astype(int) # bin of peak, nd.array of shape run.get_numberHisto_int() 
             self.dt0 = x0-self.nt0 # fraction of bin, nd.array of shape run.get_numberHisto_int() 
             self.lastbin = self.nt0.min() - self.prepostpk[0].value # nd.array of shape run.get_numberHisto_int() 
+            
+            self.nt0_run = self.create_rundict()
             nt0_dt0.children[0].children[0].value = ' '.join(map(str,self.nt0.astype(int)))
             nt0_dt0.children[0].children[1].value = ' '.join(map('{:.2f}'.format,self.dt0))
                                                    # refresh, they may be slightly adjusted by the fit
@@ -2103,7 +2126,7 @@ class mugui(object):
             _filespecs_content = [ self.filespecs[k].value for k in range(2) ] # should be 2 ('fileprefix','extension')
             _prepostpk = [self.prepostpk[k].value for k in range(2)] # 'pre-prompt bin','post-prompt bin' len(bkg_content)
             names = ['_paths_content','_filespecs_content',
-                      '_prepostpk','self.nt0','self.dt0','self.lastbin'] # keys
+                      '_prepostpk','self.nt0','self.dt0','self.lastbin','self.nt0_run'] # keys
             setup_dict = {}
             for k,key in enumerate(names):
                setup_dict[names[k]] = eval(key) # key:value
@@ -2251,12 +2274,20 @@ class mugui(object):
             from mujpy.musr2py.musr2py import musr2py as muload
             import numpy as np
             import os
+            from copy import deepcopy
             from mujpy.aux.rebin import muzeropad, value_error
+            from dateutil.parser import parse as dparse
+            import datetime
 
             # rm: run_or_runs = change['owner'].description # description is either 'Single run' or 'Run  suite'
             self._single_ = True
             self._the_runs_ = []  # it will be a list of muload() runs
             self.tlog_accordion.children[0].value=''
+            if self.nt0_run: # if by any chance it was not set, one could load data to produce it
+                nt0_experiment = deepcopy(self.nt0_run) # needed to preserve the original from the pops
+                nt0_experiment.pop('nrun')
+                nt0_days = dparse(nt0_experiment.pop('date'))
+            
             for k,run in enumerate(derun(self.load_handle[0].value)):# derun parses run suite string
                 filename = ''
                 filename = filename.join([self.filespecs[0].value,
@@ -2265,7 +2296,18 @@ class mugui(object):
                 path_and_filename = os.path.join(self.paths[0].value,filename)
                                 # data path + filespec + padded run rumber + extension)
                 self._the_runs_.append(muload())  # this adds to the list a new instance of muload()
-                read_ok = self._the_runs_[k].read(path_and_filename) #
+                read_ok = self._the_runs_[k].read(path_and_filename) # THE RUN DATA FILE IS LOADED HERE
+
+
+                if self.nt0_run: # same as above
+                    this_experiment = self.create_rundict(k) # disposable, no deepcopy
+                    this_experiment.pop('nrun') 
+                    dday = abs((dparse(this_experiment.pop('date'))-nt0_days).total_seconds())
+                    if nt0_experiment!=this_experiment or abs(dday)>datetime.timedelta(7,0).total_seconds(): # runs must have same binwidth etc. and must be within a week
+                        self.mainwindow.select_index=3
+                        with self._output_:
+                            print('Warning: mismatch in histo length/time bin/instrument/date\nConsider refitting prompt peaks (in setup)')
+
                 if read_ok==1: # error condition, set by musr2py.cpp
                     self.mainwindow.selected_index = 3
                     with self._output_:
