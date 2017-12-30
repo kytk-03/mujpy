@@ -1,4 +1,4 @@
-from numpy import cos, pi, exp, sqrt, real, nan_to_num, inf, ceil, linspace, zeros, empty, ones, hstack, fft, sum
+from numpy import cos, pi, exp, sqrt, real, nan_to_num, inf, ceil, linspace, zeros, empty, ones, hstack, fft, sum, zeros_like
 from scipy.special import dawsn,erf, j0
 from scipy.constants import physical_constants as C
 
@@ -23,14 +23,20 @@ class mumodel(object):
                (1-1/\sqrt{3})\cos \pi\gamma_\mu\mbox{dipfield}(3-\sqrt{3})t + \
                (1+1/\sqrt{3})\cos\pi\gamma_\mu\mbox{dipfield}(3+\sqrt{3})t ]\exp(-\mbox{Lor_rate}t)$', 
                      'kg':r'Gauss Kubo-Toyabe: static and dynamic, in zero or longitudinal field by G. Allodi [Phys Scr 89, 115201]'}
-
+        self._alpha_ =  []
     # ---- end generic __init__
 
     def _add_(self,x,*argv):
         '''
         e.g. a blmg global model with 
-        argv will be a tuple of parameter values (val1,val2.val3,val4,val5,val6, ...) at this iteration 
-        _add_global reconstructs how to distribute these parameter values
+        argv will be a list parameter values (val1,val2.val3,val4,val5,val6, ...) at this iteration 
+        _add_ DISTRIBUTES THESE PARAMETER VALUES
+              SINGLE OR SUITE OF RUNS WITH self._global_==False
+              order driven by model e.g. blml
+              see mugui int2_int, _add_ replicates the same loops
+                loop over model components (bl & ml)
+                    loop over pars (component parameters, two and four, respectively)
+                        eval(pars) # pars is a string set by int2_int as keys
         use to plot as follows: 
           j = -1
           yoffset = 0.05
@@ -38,8 +44,25 @@ class mumodel(object):
               j += 1
               plt.errorbar(x,y+j*yoffset,yerr=e)
               plt.plot(x,mumodel()._add_global(x,val1,val2.val3,val4,val5,val6,run=j)+j*yoffset)
-        also invoked by self._chisquare_global_           
-        '''  
+        UNIFIED WITH FFT, where, for each component f adds it   
+            if self._fft_include_components[j] else 0. 
+            if if self._fft_include_da else f
+
+              WITH self._global_==True     
+              order driven by model, e.g. blml, 
+              global, global pars, local constants, local pars (see int2_int)
+                 loop over global
+                 loop over model components (bl & ml)  
+                     loop over global pars
+                         eval(pars) 
+                loop over runs
+                    loop over local pars
+                    loop over model components (bl & ml)
+                        loop over local pars
+                            eval(pars)  
+        FINAL COMMMENT: eval implies both a python time overhead and a security break
+                        is there a way to avoid it, implementing free parameter functions?    
+        '''      
 
         # _load_data_ loads also: 
         # self._components_ = [[method,[key,...,key]],...,[method,[key,...,key]]], and eval(key) produces the parmeter value
@@ -52,12 +75,14 @@ class mumodel(object):
         # Additionally with nfixed local constants 
         # self.locals contains nruns*nfixed additional constants 
         nfixed = 0
-        if self._locals_:
-            nfixed = self._locals_.shape[1] # number of fixed local parameters per run_or_runs
+        # print('x[0] = {}, x[-1] = {}, nbins = {}'.format(x[0],x[-1],x.shape[0]))
 
-        if self._multi_run_:
-            f = zeros(self._y_.shape[0],x.shape[0])
+        if self._global_:
+            if self._locals_:
+                nfixed = self._locals_.shape[1]*self._locals_.shape[0] # number of local constants
+            f = zeros((self._y_.shape[0],x.shape[0])) # initialize a 2D array
             for run in range(self._y_.shape[0]): # range(nruns)
+                # argv is a list
                 p = empty(nfixed+len(argv)) # internally, also locals are parameters
                 if self._locals_:
                     p[:nfixed] = self._locals_[run][:] # locals for this run 
@@ -75,18 +100,20 @@ class mumodel(object):
                             p[kp] = argv[ka]
                             kp += 1
                             ka += 1
-                    f[run][:] += component(x,*p_comp) 
+                    f[run,:] += component(x,*p_comp) if self._include_components[j] else 0.
                 if self._da_index_:  # linearized correction 
                     dalpha = p[self._da_index_]
                     dada = dalpha/self._alpha_
-                    f[run][:] = ((2.+dada)*f-dada)/((2.+dada)-dada*f)
-        else:
-            f = zeros(x.shape[0])
+                    f[run,:] = ((2.+dada)*f-dada)/((2.+dada)-dada*f)  if self._include_da else f
+        else: # non global, single run fit, possibly one of a suite
+            if self._locals_:
+                nfixed = self._locals_.shape[0] # number of local constants per run
+            f = zeros_like(x)  # initialize a 1D array
             p = empty(nfixed+len(argv)) # internally, also locals are parameters
             if self._locals_:
                 p[:nfixed] = self._locals_ # locals for this run 
             p[nfixed:nfixed+self._nglobals_] = argv[:self._nglobals_] # store global minuit parameters
-            p[nfixed+self._nglobals_:] = argv[self._nglobals_:]
+            p[(nfixed+self._nglobals_):] = argv[(self._nglobals_):]
             for j in range(self._ntruecomponents_): # all components in model excluding da
                 component = self._components_[j][0]
                 pars = self._components_[j][1] 
@@ -94,92 +121,45 @@ class mumodel(object):
                 for l in range(len(pars)):
                     p_comp.append(eval(pars[l]))
                 # print('y:{},x:{},f:[]'.format(self._y_.shape,x.shape,f.shape))
-                f += component(x,*p_comp)
+                # print('f.shape = {}, zeros.shape = {}'.format(f.shape,zeros_like(x).shape))
+                f += component(x,*p_comp) if self._include_components[j] else 0.
             if self._da_index_:  # linearized correction 
                 dalpha = p[self._da_index_-1]
                 dada = dalpha/self._alpha_
-                f = ((2.+dada)*f-dada)/((2.+dada)-dada*f)
+                f = ((2.+dada)*f-dada)/((2.+dada)-dada*f) if self._include_da else f
         return f     
 
-    def _fft_add_(self,x,*argv):
-        '''
-        e.g. a blmg model with bl True and ml False
-        argv will be a tuple of parameter values (val1,val2.val3,val4,val5,val6) at this iteration 
-        after a call to _init_fft(fft_components)
-        _fft_add_ reconstructs how to distribute these parameter values 
-        and generate only the True components for fft of partial residues
-        use to plot : 
-          plt.errorbar(x,y,yerr=e)
-          plt.plot(x,mumodel()._fft_add_(x,*pars)
-        '''  
-        nfixed = 0
-        if self._locals_:
-            nfixed = self._locals_.shape[1] # number of fixed local parameters per run_or_runs
-
-        if self._multi_run_:
-            f = zeros(self._y_.shape[0],x.shape[0])
-            for run in range(self._y_.shape[0]): # range(nruns)
-                p = empty(nfixed+len(argv)) # internally, also locals are parameters
-                if self._locals_:
-                    p[:nfixed] = self._locals_[run][:] # locals for this run 
-                # nothing, if run <1 nfixed = 0 and self._locals_ = None
-                p[nfixed:nfixed+self._nglobals_] = argv[:self._nglobals_] # store global minuit parameter
-                kp, ka = nfixed+self._nglobals_, self._nglobals_  # new version
-                for j in range(self._ntruecomponents_): # all components in model excluding da
-                    component = self._components_[j][0]
-                    pars = self._components_[j][1]
-                    ismin =  self._components_[j][2]
-                    p_comp = []
-                    for l in range(len(pars)):
-                        p_comp.append(eval(pars[l]))
-                        if ismin[l]:     # new version, not implemented in mugui yet!
-                            p[kp] = argv[ka]
-                            kp += 1
-                            ka += 1
-                    f[run][:] += component(x,*p_comp) if self._fft_include_components[j] else 0.
-                if self._fft_include_da:  # linearized correction 
-                    dalpha = p[self._da_index_-1]
-                    dada = dalpha/self._alpha_
-                    f[run][:] = ((2.+dada)*f-dada)/((2.+dada)-dada*f)
-        else:
-            f = zeros(x.shape[0])
-            p = empty(nfixed+len(argv)) # internally, also locals are parameters
-            if self._locals_:
-                p[:nfixed] = self._locals_ # locals for this run 
-            p[nfixed:nfixed+self._nglobals_] = argv[:self._nglobals_] # store global minuit parameters
-            p[nfixed+self._nglobals_:] = argv[self._nglobals_:]
-            for j in range(self._ntruecomponents_): # all components in model excluding da
-                component = self._components_[j][0]
-                pars = self._components_[j][1] 
-                p_comp = []
-                for l in range(len(pars)):
-                    p_comp.append(eval(pars[l]))
-                # print('y:{},x:{},f:[]'.format(self._y_.shape,x.shape,f.shape))
-                f += component(x,*p_comp) if self._fft_include_components[j] else 0.
-            if self._fft_include_da:  # linearized correction 
-                dalpha = p[self._da_index_-1] # if da is a component, then _load_data_ defines self._da_index_
-                dada = dalpha/self._alpha_
-                f = ((2.+dada)*f-dada)/((2.+dada)-dada*f)
-        return f     
-
-    def _fft_init(self,fft_include_components,fft_include_da):
+    def _fft_init(self,include_components,include_da=True):
         '''
         saves the string of component flags used to generate a partial residue for FFT
         '''
-        self._fft_include_components = fft_include_components # True means include, False, do not include 
+        self._include_components = include_components # True means include, False, do not include 
                                               # in function f, for partial residues = asymm - f
-        self._fft_include_da = fft_include_da # True means "da is a component" and "include it" in function f,
+        self._include_da = include_da # True means "da is a component" and "include it" in function f,
                                               # for partial residues = asymm - f, False, all other combinations
 
-    def _load_data_(self,x,y,_components_,_alpha,e=1,_nglobals_=None,_locals_=None,_ntruecomponents_=None):
+    def _include_all_(self):
+        '''
+        reset to normal fit mode (initially of after fft)
+        '''
+        self._include_components = [True]*self._ntruecomponents_
+        self._include_da = True
+
+    def _load_data_(self,x,y,_components_,_alpha_,e=1,_nglobals_=None,_locals_=None):
         ''' ,
-        Must be called before activating _chisquare_
+        _load_data_(x,y,_components_,_alpha_,e,_nglobals_,_locals_,_ntruecomponents_)
         x, y, e are numpy arrays
-        e is always defined, 
-        either provided by the caller 
-        or default to np.ones(x.shape[0])
-        _int is a compact model list
-        _alpha is ditto
+        e = 1 yields unitary errors 
+        _components_ is a list [[method,[key,...,key]],...,[method,[key,...,key]]], 
+                                where method is an instantiation of a component, e.g. self.ml 
+                                and value = eval(key) produces the parameter value
+        _alpha_ is ditto
+        _nglobals_ = index of global parameter in iminuit parameter list (only for global fits)
+        _locals_ = values of local constants (e.g. B, T extrated form data file by musr2py), a 2D array for global fits
+
+        Strategy to accommodate single runs, multi run suites and global:
+        for global y is 2D array self._global_ = True
+        for single and multi y is 1D 
         '''
         # self._components_ = [[method,[key,...,key]],...,[method,[key,...,key]]], and eval(key) produces the parmeter value
         # self._alpha_, self._da_index_ (index of dalpha or [])
@@ -189,27 +169,25 @@ class mumodel(object):
         # local, y is a simple vector
         self._x_ = x
         self._y_ = y
-        try:
-            self._multi_run_ = True if self._y_.shape[1] > 0 else False
-        except:
-            self._multi_run_ = False
-        self._alpha_ = _alpha
+        self._global_ = True if _nglobals_ is not None else False
+        self._alpha_ = _alpha_
         self._components_ = []
         self._da_index_ = []
         self._ntruecomponents_ = 0
         for k, val in enumerate(_components_):
-            if val[0]: # val[0] is directly the method
+            if val[0]: # val[0] is directly the method for all components but dalpha
                 self._ntruecomponents_ += 1
                 self._components_.append(val) # store again [method, [key,...,key]] # also val[3] = isminuit, in new version
             else:  # when the method is da  (val[0] was set to [], i.e. False)
                 self._da_index_ = 1+int(val[1][0][2:val[1][0].find(']')]) # position in minuit parameter list +1 to pass logical test
                 # print('_da_index_ = {}'.format(self._da_index_-1))
+        self._include_all_()
         if _nglobals_:
             self._nglobals_ = _nglobals_
         else:
             self._nglobals_ = 0 # to be used as index
         self._locals_ = _locals_
-        if self._multi_run_:
+        if self._global_:
             # global
             try:
                 # (should be y.shape[1]=x.shape[0])
@@ -219,8 +197,8 @@ class mumodel(object):
                 if isinstance(e,int):
                     self._e_ = ones((y.shape[0],x.shape[0]))
                 else:
-                    if e.shape[1]!=x.shape[0]:
-                        raise ValueError('x, e have different lengths')           
+                    if e.shape[1]!=x.shape[1]:
+                        raise ValueError('x, e have different lengths, {},{}'.format(x.shape,e.shape))           
                     else:
                         self._e_ = e
             except: # y.shape[1] does not exist
@@ -232,7 +210,7 @@ class mumodel(object):
                 self._e_ = ones((x.shape[0]))
             else:
                 if e.shape[0]!=x.shape[0]:
-                    raise ValueError('x, e have different lengths')           
+                    raise ValueError('x, e have different lengths, {},{}'.format(x.shape,e.shape))          
                 else:
                     self._e_ = e
         return 0 # no error
