@@ -2143,7 +2143,7 @@ class mugui(object):
             plot_range0 = self.plot_range.value 
         except:
             plot_range0 = '0,25000,100'
-        self.plot_range = Text(description='plot range\nSstart,stop\n[,pack]\n[last,pack]',value=plot_range0,
+        self.plot_range = Text(description='plot range\nstart,stop\n[,pack]\n[last,pack]',value=plot_range0,
                                layout=Layout(width='22%'),continuous_update=False)
         self.plot_range.style.description_width='36%'
         self.plot_range.observe(on_range,'value')
