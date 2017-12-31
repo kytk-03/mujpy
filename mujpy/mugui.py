@@ -135,13 +135,14 @@ class mugui(object):
         '''
         from ipywidgets import Textarea, Layout
 
-        _version = 'MuJPy          version '+'0.1' # increment while progressing
+        _version = 'MuJPy          version '+'1.0' # increment while progressing
         _authors = '\n\n  Authors: Roberto De Renzi, Pietro Bonfà, '
         _blahblah = ('\n\n  A Python MuSR data analysis graphical interface.'+
                      '\n  Based on classes, designed for jupyter.'+
                      '\n  Released under the MIT licence')
         _pronounce = ('\n  See docs in ReadTheDocs'+
                       '\n  Pronounce it as mug + pie')
+        _additional_credits_ = ('\n acme algorithm code from NMRglue, by Jonathan J. Helmus')
         _about_text = _version+_blahblah+_pronounce+_authors
         _about_area = Textarea(value=_about_text,
                                    placeholder='Info on MuJPy',
