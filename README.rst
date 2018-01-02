@@ -9,28 +9,29 @@ Released under the MIT licence.
 Linux instructions, for the time being. 
 Valid on WIN10 that has a linux shell.
 
-* Use virtualenv (see virtualenv.pypa.io).
-* Make sure you have python(3) and jupyter, or install them (see jupyter.readthedoc.io).
+* Make sure you have python, standard on linux, and jupyter. Otherwise install them (see https://docs.python.org/3/using/windows.html, https://docs.python.org/3/using/mac.html, jupyter.readthedoc.io).
 * Install mujpy. Download from https://github.com/RDeRenzi/mujpy, unzip into the directory of your choice::
 
    cd mujpy/mujpy/musr2py
    make
    sudo make install
    cd ../..
-   # now launch your python3 virtualenv   
-   python setup.py install
+   # preferably use python 3
+   python[3] setup.py install
+
+* Check dependencies, see requirements.txt. When the first mujpy release is on Pipy, pip will sort this out.
 
 * Start jupyter::
 
    jupyter notebook
 
-* In the first cell type::
+* Use mu_test_damg.ipnb. Alternatively the first cell type::
 
-  >>>%matplotlib
+  >>>%matplotlib # "%matplotlib tk"  avoids a line of output if you are using the tk backend
 
 * Add a cell and write::
 
    from mujpy.mugui import mugui
    MuJPy = mugui()
 
-* Run the cells
+* Run all the cells (if you read that 

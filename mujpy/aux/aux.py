@@ -256,6 +256,56 @@ def find_nth(haystack, needle, n):
                n -= 1
            return start
 
+def get_grouping(groupcsv):
+    """
+    name = 'forward' or 'backward'
+    grouping(name) is an np.array wth detector indices
+    group.value[k] for k=0,1 is a shorthand csv like '1:3,5' or '1,3,5' etc.
+    index is present mugui.mainwindow.selected_index
+    out is mugui._output_ for error messages
+    returns
+      grouping, group, index
+         group and index are changed only in case of errors
+    """
+    import numpy as np
+
+    # two shorthands: either a list, comma separated, such as 1,3,5,6 
+    # or a pair of integers, separated by a colon, such as 1:3 = 1,2,3 
+    # only one column is allowed, but 1, 3, 5 , 7:9 = 1, 3, 5, 7, 8, 9 
+    # or 1:3,5,7 = 1,2,3,5,7  are also valid
+    #       get the shorthand from the gui Text 
+    groupcsv = groupcsv.replace('.',',') # can only be a mistake: '.' means ','
+    try:
+        if groupcsv.find(':')==-1:
+            # colon not found, csv only
+            grouping = np.array([int(s) for s in groupcsv.split(',')])
+        else:
+            # colon found                 
+            if groupcsv.find(',')+groupcsv.find(':')==-2:
+                grouping = np.array([int(groupcsv)])
+            elif groupcsv.find(',')+1: # True if found, False if not found (not found yields -1)    
+                firstcomma = groupcsv.index(',')
+                lastcomma = groupcsv.rindex(',')
+                if firstcomma < groupcsv.find(':'): # first read csv then range
+                    partial = np.array([int(s) for s in groupcsv[:lastcomma].split(',')])
+                    fst = int(groupcsv[lastcomma:grouping.find(':')])
+                    lst = int(groupcsv[groupcsv.find(':')+1:])
+                    grouping[name] = np.concatenate((partial,arange(fst,lst+1,dtype=int)))
+                else: # first read range then csv
+                    partial = np.array([int(s) for s in groupcsv[:lastcomma].split(',')])
+                    fst = int(groupcsv[:groupcsv.find(':')])
+                    lst = int(groupcsv[groupcsv.find(':')+1:firstcomma])
+                    grouping = np.concatenate((np.arange(fst,lst+1,dtype=int),partial))
+            else: # only range
+                fst = int(groupcsv[:groupcsv.find(':')])
+                lst = int(groupcsv[groupcsv.find(':')+1:])
+                grouping = np.arange(fst,lst+1,dtype=int)
+            grouping -=1 # python starts at 0
+    except:
+        grouping = np.array([-1])
+        
+    return grouping
+
 def get_title(run):
     '''
     form standard psi title
@@ -357,10 +407,10 @@ def muzeropad(runs,out):
             print('Too long run number!')
         return []
 
-def norun_msg(index,out):
-    index = 3
+def norun_msg(out):
     with out:
          print('No run loaded yet! Load one first (select suite tab).')
+
 
 def plotile(x,xdim=0,offset=0):
     '''

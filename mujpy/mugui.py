@@ -19,6 +19,12 @@
 # single runs, both for single and for non global fit
 # run suites, both for global fit and for multiplot
 ###############################################################
+            # another dialog to explore
+            #import tkinter
+            #from tkinter import simpledialog
+            #move = simpledialog.askstring("Pause","hit return when ready")
+            #simpledialog.mainloop(0)
+
 
 class mugui(object):
 
@@ -55,6 +61,7 @@ class mugui(object):
         self.peakheight = 100000.
         self.peakwidth = 1.   # broad guesses for default
         self.histoLength = 7900 # initialize
+        self.bin_range0 = '0,500' # initialize (for plots, counter inspection)
         self.nt0_run = []
         self._global_ = False
         self.thermo = 1 # sample thermometer is 0?
@@ -91,7 +98,8 @@ class mugui(object):
 ###########
         self.fig_fit = [] # initialize to false, it will become a pyplot.subplots instance 
         self.fig_fft = [] # initialize to false, it will become a pyplot.subplots instance
-        self.fig_multiplot = [] 
+        self.fig_multiplot = []
+        self.fig_counters = []
 #        self.graph_fit = Toplevel()
 #        canvas_fit = FigureCanvas(self.fig_fit, master=self.graph_fit)
 #        canvas_fit.get_tk_widget().pack()
@@ -136,14 +144,14 @@ class mugui(object):
         from ipywidgets import Textarea, Layout
 
         _version = 'MuJPy          version '+'1.0' # increment while progressing
-        _authors = '\n\n  Authors: Roberto De Renzi, Pietro Bonfà, '
+        _authors = '\n\n  Authors: Roberto De Renzi, Pietro Bonfà (*)'
         _blahblah = ('\n\n  A Python MuSR data analysis graphical interface.'+
                      '\n  Based on classes, designed for jupyter.'+
                      '\n  Released under the MIT licence')
         _pronounce = ('\n  See docs in ReadTheDocs'+
                       '\n  Pronounce it as mug + pie')
-        _additional_credits_ = ('\n acme algorithm code from NMRglue, by Jonathan J. Helmus')
-        _about_text = _version+_blahblah+_pronounce+_authors
+        _additional_credits_ = ('\n ---------------------\n (*) dynamic Kubo-Toyabe algorithm by G. Allodi\n     MuSR_td_PSI by A. Amato and A.-R. Raselli \n     acme algorithm code from NMRglue, by Jonathan J. Helmus')
+        _about_text = _version+_blahblah+_pronounce+_authors+_additional_credits_
         _about_area = Textarea(value=_about_text,
                                    placeholder='Info on MuJPy',
                                    layout=Layout(width='100%',height='170px'),
@@ -195,16 +203,16 @@ class mugui(object):
             cbackw = np.zeros(time.shape[0]) # pure counts for Poisson errors
             for j, run in enumerate(runs): 
 
-                for detector in self.grouping['forward']:
-                    n1, n2 = self.nt0[detector]+self.offset.value, self.nt0[detector]+self.offset.value+self.histoLength
-                    histo = run.get_histo_array_int(detector)
+                for counter in self.grouping['forward']:
+                    n1, n2 = self.nt0[counter]+self.offset.value, self.nt0[counter]+self.offset.value+self.histoLength
+                    histo = run.get_histo_array_int(counter)
                     background = np.mean(histo[self.firstbin:self.lastbin])
                     yforw += histo[n1:n2]-background
                     cforw += histo[n1:n2]
 
-                for detector in self.grouping['backward']:
-                    n1, n2 = self.nt0[detector]+self.offset.value, self.nt0[detector]+self.offset.value+self.histoLength
-                    histo = run.get_histo_array_int(detector)
+                for counter in self.grouping['backward']:
+                    n1, n2 = self.nt0[counter]+self.offset.value, self.nt0[counter]+self.offset.value+self.histoLength
+                    histo = run.get_histo_array_int(counter)
                     background = np.mean(histo[self.firstbin:self.lastbin])
                     ybackw += histo[n1:n2]-background
                     cbackw += histo[n1:n2]
@@ -1034,7 +1042,7 @@ class mugui(object):
             returntup = derange_int(self.plot_range.value) 
             if sum(n<0 for n in returntup)>0:
                     tmp = self.plot_range.value
-                    self.plot_range.value = '0,'+str(self.histoLength)
+                    self.plot_range.value = self.plot_range0
                     self.plot_range.background_color = "mistyrose"
                     self.mainwindow.selected_index = 3
                     with self._output_:
@@ -1332,7 +1340,8 @@ class mugui(object):
                                                 elinewidth=1.0,ecolor=color,mec=color,mfc=color,
                                                 ms=2.0,alpha=0.5) # data
                     self.ax_fit[(0,0)].plot(t0,y0,'-',lw=0.5,alpha=0.3,color=color)
-                    self.ax_fit[(0,0)].text(t1,y0.max(),str(self.nrun[k]))
+                    if not self._single_:
+                        self.ax_fit[(0,0)].text(t1,y0.max(),str(self.nrun[k]))
                     self.ax_fit[(1,0)].plot(ttile[k],yres[k],'-',lw=1.0,alpha=0.3,zorder=2,color=color) # residues 
 
                     self.ax_fit[(0,0)].plot(tftile[k],ftile[k],'-',lw=1.5,alpha=0.5,zorder=2,color=color) # fit
@@ -1359,12 +1368,12 @@ class mugui(object):
                 ###############################
                 # set title, labels
                 ###############################
-                self.ax_fit[(0,0)].set_title(self.title.value)
                 self.ax_fit[(0,0)].set_ylabel('Asymmetry')
                 self.ax_fit[(1,0)].set_ylabel('Residues')
                 self.ax_fit[(1,0)].set_xlabel(r'Time [$\mu$s]')
 
                 if self._single_:
+                    self.ax_fit[(0,0)].set_title(str(self.nrun[0])+': '+self.title.value)
                     ########################
                     # chi2 distribution: fit
                     ########################
@@ -1412,6 +1421,7 @@ class mugui(object):
                         string += '$\chi^2_p=$ {:.4f}'.format(chi2plot)
                     self.ax_fit[(0,-1)].text(-4.,0.2,string)
                 else:
+                    self.ax_fit[(0,0)].set_title(self.title.value)
                     ########################
                     # chi2 distribution: fit
                     ########################
@@ -1457,55 +1467,6 @@ class mugui(object):
             self.fig_fit.canvas.manager.window.tkraise()
             P.draw()
                 
-        def get_grouping(name):
-            """
-            name = 'forward' or 'backward'
-            grouping(name) is an np.array wth detector indices
-            group.value[k] for k=0,1 is a shorthand csv like '1:3,5' or '1,3,5' etc.
-            """
-            import numpy as np
-
-            # two shorthands: either a list, comma separated, such as 1,3,5,6 
-            # or a pair of integers, separated by a colon, such as 1:3 = 1,2,3 
-            # only one column is allowed, but 1, 3, 5 , 7:9 = 1, 3, 5, 7, 8, 9 
-            # or 1:3,5,7 = 1,2,3,5,7  are also valid
-            #       get the shorthand from the gui Text 
-            groups = ['forward','backward']
-            groupcsv = self.group[groups.index(name)].value # self.group[0,1] are handles to the corresponding Texts
-            #       now parse groupcsv shorthand
-            groupcsv = groupcsv.replace('.',',') # can only be a mistake: '.' means ','
-            try:
-                if groupcsv.find(':')==-1:
-                    # colon not found, csv only
-                    self.grouping[name] = np.array([int(s) for s in groupcsv.split(',')])
-                else:
-                    # colon found                 
-                    if groupcsv.find(',')+groupcsv.find(':')==-2:
-                        self.grouping[name] = np.array([int(groupcsv)])
-                    elif groupcsv.find(',')+1: # True if found, False if not found (not found yields -1)    
-                        firstcomma = groupcsv.index(',')
-                        lastcomma = groupcsv.rindex(',')
-                        if firstcomma < groupcsv.find(':'): # first read csv then range
-                            partial = np.array([int(s) for s in groupcsv[:lastcomma].split(',')])
-                            fst = int(groupcsv[lastcomma:grouping.find(':')])
-                            lst = int(groupcsv[groupcsv.find(':')+1:])
-                            self.grouping[name] = np.concatenate((partial,arange(fst,lst+1,dtype=int)))
-                        else: # first read range then csv
-                            partial = np.array([int(s) for s in groupcsv[:lastcomma].split(',')])
-                            fst = int(groupcsv[:groupcsv.find(':')])
-                            lst = int(groupcsv[groupcsv.find(':')+1:firstcomma])
-                            self.grouping[name] = np.concatenate((np.arange(fst,lst+1,dtype=int),partial))
-                    else: # only range
-                        fst = int(groupcsv[:groupcsv.find(':')])
-                        lst = int(groupcsv[groupcsv.find(':')+1:])
-                        self.grouping[name] = np.arange(fst,lst+1,dtype=int)
-                    self.grouping[name] -=1 # python starts at 0
-            except:
-                with self._output_:
-                    print('Wrong group syntax: {}'.format(self.group[groups.index(name)].value))
-                self.group[groups.index(name)].value = ''
-                self.mainwindow.selected_index = 3
-    
         def int2_int():
             '''
             From internal parameters to the minimal representation 
@@ -1545,7 +1506,6 @@ class mugui(object):
            #     print(_int[k])      
 
             return _int
-
 
         def int2min(return_names=False):
             '''
@@ -1739,7 +1699,8 @@ class mugui(object):
     # error: no run yet
     ###################
             if not self._the_runs_:
-                norun_msg(self.mainwindow.selected_index, self._output_)  # writes a message in self._output
+                norun_msg(self._output_)  # writes a message in self._output
+                self.mainwindow.selected_index = 3
             else:
     ###################
     # run loaded
@@ -1750,6 +1711,10 @@ class mugui(object):
                 returntup = derange_int(eval('self.fit_range.value')) 
                 if len(returntup)==3: # 
                     start, stop, pack = returntup
+                elif len(returntup)==0:
+                    with self._output_:
+                        print('Empty ranges. Choose fit/plot range')
+                    self.mainwindow.selected_index = 3
                 else:
                     start, stop = returntup
                 time,asymm,asyme = rebin(self.time,self.asymm,[start,stop],pack,e=self.asyme)
@@ -1783,7 +1748,7 @@ class mugui(object):
                                              pedantic=False,
                                              forced_parameters=self.minuit_parameter_names,
                                              print_level=level,**fitarg[0])
-                            print('{}: {} *******************'.format(self.nrun[k],get_title(self._the_runs_[k][0])))
+                            print('{}: {} *******************'.format(self.nrun[0],get_title(self._the_runs_[0][0])))
                             lastfit.migrad()
                             self.fitargs.append(lastfit.fitarg)
                     else:
@@ -1830,8 +1795,18 @@ class mugui(object):
             '''
             observe response of setup tab widgets:
             '''
+            from mujpy.aux.aux import get_grouping
             name = change['owner'].description
-            get_grouping(name) # stores self.group shorthand in self.grouping dict
+            groups = ['forward','backward']
+    #       now parse groupcsv shorthand
+            self.grouping[name] = get_grouping(self.group[groups.index(name)].value) # stores self.group shorthand in self.grouping dict
+            if self.grouping[name][0]==-1:
+                with self._output_:
+                    print('Wrong group syntax: {}'.format(self.group[groups.index(name)].value))
+                self.group[groups.index(name)].value = ''
+                self.grouping[name] = np.array([])
+                self.mainwindow.selected_index = 3
+
 
         def on_integer(change):
             name = change['owner'].description
@@ -1901,7 +1876,7 @@ class mugui(object):
                     self.fit_range.value = '0,'+str(self.histoLength)
                     self.fit_range.background_color = "mistyrose"
                 else:
-                    self.plot_range.value = '0,'+str(self.histoLength)
+                    self.plot_range.value = self.plot_range0
                     self.plot_range.background_color = "mistyrose"
             else:
                 if name == 'fit':
@@ -1946,7 +1921,6 @@ class mugui(object):
         def save_fit(k):
             '''
             saves fit values such that load_fit can reproduce the same fit
-            saves also a csv of parameters
             includes fit of suite of runs and global fits
             '''
             import dill as pickle
@@ -1989,7 +1963,7 @@ class mugui(object):
             """
             return shorthand csv out of grouping
             name = 'forward' or 'backward'
-            grouping[name] is an np.array wth detector indices
+            grouping[name] is an np.array wth counter indices
             group.value[k] for k=0,1 is a shorthand csv like '1:3,5' or '1,3,5' etc.
             """
             import numpy as np
@@ -2022,7 +1996,7 @@ class mugui(object):
             '''
             import os
             import csv
-
+            # print('k = {}, self.nrun = {}'.format(k,[j for j in self.nrun]))
             version = str(self.version.value)
             strgrp = self.group[0].value.replace(',','_')+'-'+self.group[1].value.replace(',','_')
             path_csv = os.path.join(self.paths[2].value,model.value+'.'+version+'.'+strgrp+'.csv')
@@ -2039,38 +2013,45 @@ class mugui(object):
             row.append(hichi2-chi2)
             row.append(self.alpha.value)
             row.append(self.offset.value)
-            for k in range(len(self.nt0)):
-                row.append((self.nt0[k],self.dt0[k]))
+            for j in range(len(self.nt0)):
+                row.append(self.nt0[j])
+                row.append(self.dt0[j])
+            header = ['Run','T_cryo[K]','e_T_cryo[K]','T_sample[K}','e_T_sample[K]','B[G]']
+            for j,name in enumerate(self.minuit_parameter_names):
+                header.append(name)
+                header.append('e_'+name)
+            header.append('chi2_r')
+            header.append('e_chi2_low')
+            header.append('e_chi2_hi')
+            header.append('alpha')
+            header.append('offset')
+            header.append('nt0')
+            header.append('dt0')
 
             try: # the file exists
                 with open(path_csv,'r') as f_in:
                     reader=csv.reader(f_in,dialect='excel',delimiter=' ',quotechar='"')
-                    header = next(reader)                   
-                with open(path_csv,'w') as f_out:                   
-                    writer=csv.writer(f_out,dialect='excel',delimiter=' ',quotechar='"')
-                    writer.writerow(header)
-                    for line in reader:
-                        if int(line[0]) < self.nrun[k]: # rewrite previous runs
-                            writer.writerow(line)
-                        elif int(line[0]) == self.nrun[k]: # if it exists, skip it
-                            break
-                        writer.writerow(row) # overwrite or write a new run
-                        writer.writerows(reader) # rewrite the rest          
+                    headerold = next(reader) 
+                    assert header==headerold                    
+                    with open(path_csv,'w') as f_out:                   
+                        writer=csv.writer(f_out,dialect='excel',delimiter=' ',quotechar='"')
+                        writer.writerow(header)
+                        for line in reader:
+                            if int(line[0]) < self.nrun[k]: # rewrite previous runs
+                                writer.writerow(line)
+                            elif int(line[0]) == self.nrun[k]: # if it exists, skip it
+                                break
+                            writer.writerow(row) # overwrite or write a new run
+                            writer.writerows(reader) # rewrite the rest
+                with self._output_:
+                    print('Run {} best fit inserted in existing log {}'.format(self.nrun[k],path_csv))
             except: # write a new file
-                header = ['Run','T_cryo[K]','e_T_cryo[K]','T_sample[K}','e_T_sample[K]','B[G]']
-                for k,name in enumerate(self.minuit_parameter_names):
-                    header.append(name)
-                    header.append('e_'+name)
-                header.append('chi2_r')
-                header.append('e_chi2_low')
-                header.append('e_chi2_hi')
-                header.append('alpha')
-                header.append('offset')
-                header.append('(nt0, dt0)')
                 with open(path_csv,'w') as f:
                     writer=csv.writer(f,dialect='excel',delimiter=' ',quotechar='"')
                     writer.writerow(header)
                     writer.writerow(row)
+                with self._output_:
+                    print('Run {} best fit written in NEW log {}'.format(self.nrun[k],path_csv))
 
         ######### here starts the fit method of MuGui
         # no need to observe parvalue, since their value is a perfect storage point for the latest value
@@ -2119,45 +2100,55 @@ class mugui(object):
         loadmodel = Text(description='loadmodel',layout=Layout(width='20%'),continuous_update=False) # this is where one can input a new model name
         loadmodel.observe(on_load_model,'value')
         loadmodel.style.description_width='37%'
+
         try:
             version0 = self.version.value 
         except:
             version0 = 1
-        self.version = IntText(description='version',value=version0,layout=Layout(width='11%',indent=False)) # version.value is an int
-        self.version.style.description_width='48%'
-        fit_button = Button (description='Fit',layout=Layout(width='6%'))
-        fit_button.style.button_color = self.button_color
-        fit_button.on_click(on_fit_request)
+
+        try:
+            self.plot_range0 = self.plot_range.value 
+        except:
+            if not self._the_runs_:
+                self.plot_range0 = ''
+
         try:
             fit_range0 = self.fit_range.value 
         except:
-            fit_range0 = '0,25000,100'
+            fit_range0 = self.plot_range0
+
+        self.version = IntText(description='version',value=version0,layout=Layout(width='11%',indent=False)) # version.value is an int
+        self.version.style.description_width='48%'
+
+        fit_button = Button (description='Fit',layout=Layout(width='6%'))
+        fit_button.style.button_color = self.button_color
+        fit_button.on_click(on_fit_request)
+
         self.fit_range = Text(description='fit range\nstart,stop[,pack]',value=fit_range0,layout=Layout(width='22%'),continuous_update=False)
         self.fit_range.style.description_width='36%'
         self.fit_range.observe(on_range,'value')
+
         plot_button = Button (description='Plot',layout=Layout(width='6%'))
         plot_button.style.button_color = self.button_color
         plot_button.on_click(on_plot_request)
-#        self.plot_range = Text(description='plot range',placeholder='start,stop\n[,pack]\n[last,pack]',value='0,500',
-#                               layout=Layout(width='22%'),continuous_update=False)
-        try:
-            plot_range0 = self.plot_range.value 
-        except:
-            plot_range0 = '0,25000,100'
-        self.plot_range = Text(description='plot range\nstart,stop\n[,pack]\n[last,pack]',value=plot_range0,
+
+        self.plot_range = Text(description='plot range\nstart,stop\n[,pack]\n[last,pack]',value=self.plot_range0,
                                layout=Layout(width='22%'),continuous_update=False)
         self.plot_range.style.description_width='36%'
         self.plot_range.observe(on_range,'value')
+
         update_button = Button (description='Update',layout=Layout(width='8%'))
         update_button.style.button_color = self.button_color
         update_button.on_click(on_update)
+
         anim_stop_start = ToggleButton(description='stop/start',value=True,layout=Layout(width='10%'))   
         anim_stop_start.observe(on_start_stop,'value')
-        #anim_stop_start.style.button_color = self.button_color
+
         label_delay = Label(value='Delay (ms)', layout=Layout(width='8%'))
+        anim_delay = IntText(value=1000, layout=Layout(width='8%'))
+
         anim_check = Checkbox(description='Animate',value=True, layout=Layout(width='10%'))
         anim_check.style.description_width = '1%'
-        anim_delay = IntText(value=1000, layout=Layout(width='8%'))
         
         topframe_handle = HBox(description = 'Model', children=[update_button,loadmodel,self.offset,
                                                                 fit_button,self.group[1],
@@ -2284,6 +2275,118 @@ class mugui(object):
         multi plot (if not _single_)
         '''
 
+        def on_counter(b):
+            '''
+            check syntax of counter_range
+            '''
+            from mujpy.aux.aux import get_grouping
+            from numpy import array
+            # abuse of get_grouping: same syntax here
+            if counter_range.value == '':
+                return
+            counters = get_grouping(counter_range.value)
+            ok = 0
+            for k in range(counters.shape[0]):
+                if counters[k]<0 or counters[k]>=self._the_runs_[0][0].get_numberHisto_int():
+                    # print('k = {}, counters[k] = {}, numberHisto = {}'.format(k,counters[k],self._the_runs_[0][0].get_numberHisto_int()))
+                    ok = -1
+            if counters[0] == -1 or ok == -1:
+                with self._output_:
+                    print('Wrong counter syntax or counters out of range: {}'.format(counter_range.value))
+                self.mainwindow.selected_index =3
+                counter_range.value = ''
+                counters = array([])
+
+        def on_counterplot(b):
+            '''
+            COUNTERPLOT:
+            produce plot
+            '''
+            from numpy import zeros, arange
+            from mujpy.aux.aux import get_grouping, norun_msg, derange_int 
+            import matplotlib.pyplot as P
+
+            font = {'family':'Ubuntu','size':8}
+            P.rc('font', **font)
+            dpi = 100.
+
+            if not self._the_runs_:
+                norun_msg(self._output_)
+                self.mainwindow.selected_index = 3 
+                return
+
+            ############
+            #  bin range
+            ############
+            returntup = derange_int(self.counterplot_range.value) # 
+            start, stop = returntup
+            # abuse of get_grouping: same syntax here
+            counters = get_grouping(counter_range.value) # already tested
+            # now counters is an np.array of counter indices
+
+            #############
+            # load histos
+            #############
+            histo = zeros((self._the_runs_[0][0].get_numberHisto_int(),stop-start),dtype=int)
+            bins = arange(start,stop,dtype=int)
+
+            # 4x4, 3x3 or 2x3 counters
+            ncounters = counters.shape[0] # self.numberHisto
+            screen_x, screen_y = P.get_current_fig_manager().window.wm_maxsize() # screen size in pixels
+            y_maxinch = float(screen_y)/dpi -0.5 # maximum y size in inches, 1 inch for window decorations 
+            fx, f, f1 = 1., 4./5., 16./25. # fraction of screen for 
+            if ncounters > 9:
+                nrows,ncols = 4,4
+                x,y = fx*y_maxinch, y_maxinch
+            elif ncounters > 6:
+                nrows,ncols = 3,3
+                x,y = fx*y_maxinch*f, y_maxinch*f
+            elif ncounters > 4:
+                nrows,ncols = 2,3
+                x,y = fx*y_maxinch*f, y_maxinch*f1
+            elif ncounters > 1:
+                nrows,ncols = 2,2
+                x,y = fx*y_maxinch*f1, y_maxinch*f1
+            else:
+                nrows,ncols = 1,1
+
+            ##############################
+            #  set or recover figure, axes 
+            ##############################
+            if self.fig_counters:
+                self.fig_counters.clf()
+                self.fig_counters,self.ax_counters = P.subplots(nrows,ncols,figsize=(x,y),num=self.fig_counters.number) 
+            else:
+                # residual problem: when this is the first pyplot window a Figure 1 is opened that nobody ordered
+                self.fig_counters,self.ax_counters = P.subplots(num=10,nrows=nrows,ncols=ncols,figsize=(x,y),dpi=dpi,squeeze=False)
+                self.fig_counters.subplots_adjust(hspace=0.1,top=0.95,bottom=0.11,right=0.98,wspace=0.28)
+                self.fig_counters.canvas.set_window_title('Counters')
+
+            nplots = nrows*ncols    
+            for k,nrun in enumerate(self.nrun):
+                if nrun==int(self.choose_nrun.value):
+                    this_run = k
+            for k in range(nplots):
+
+                if k <= counters.shape[0]:
+                    counter = counters[k] # already an index 0:n-1
+                    for run in self._the_runs_[this_run]: # allow for add runs 
+                        histo[counter] += run.get_histo_array_int(counter)[start:stop]
+                    ymax = histo[counter].max()
+                    if stop-start<100:
+                        self.ax_counters[divmod(counter,ncols)].bar(bins,histo[counter,:],edgecolor='k',color='silver',alpha=0.7,lw=0.7)
+                    else:
+                        self.ax_counters[divmod(counter,ncols)].plot(bins,histo[counter,:],'k-',lw=0.7)
+                    if divmod(counter,ncols)[0]==counters.shape[0]/ncols-1:
+                        self.ax_counters[divmod(counter,ncols)].set_xlabel('bins')
+                    if divmod(counter,ncols)[1]==0:
+                        self.ax_counters[divmod(counter,ncols)].set_ylabel('counts')
+                    self.ax_counters[divmod(counter,ncols)].text(start+(stop-start)*0.9, ymax*0.9,'# '+str(counter+1)) # from index to label
+                else:
+                    self.ax_counters[divmod(k,ncols)].cla()
+                    self.ax_counters[divmod(k,ncols)].axis('off')
+            P.show()          
+            
         def on_multiplot(b):
             '''
             MULTIPLOT:
@@ -2318,10 +2421,11 @@ class mugui(object):
                 self.ax_multiplot.set_title(str(self.nrun[0])+': '+get_title(self._the_runs_[0][0]))
                 return line, 
 
+            dpi = 100.
             ############
             #  bin range
             ############
-            returntup = derange_int(multiplot_range.value) # 
+            returntup = derange_int(self.multiplot_range.value) # 
             pack = 1
             if len(returntup)==3: # plot start stop packearly last packlate
                 start, stop, pack = returntup
@@ -2351,7 +2455,7 @@ class mugui(object):
                 self.fig_multiplot.clf()
                 self.fig_multiplot,self.ax_multiplot = P.subplots(figsize=(x,y),num=self.fig_multiplot.number) 
             else:
-                self.fig_multiplot,self.ax_multiplot = P.subplots(figsize=(x,y))
+                self.fig_multiplot,self.ax_multiplot = P.subplots(figsize=(x,y),dpi=dpi)
                 self.fig_multiplot.canvas.set_window_title('Multiplot')
             screen_x, screen_y = P.get_current_fig_manager().window.wm_maxsize() # screen size in pixels
             y_maxinch = float(screen_y)/float(self.fig_multiplot.dpi) # maximum y size in inches
@@ -2422,13 +2526,16 @@ class mugui(object):
             '''
             from mujpy.aux.derange import derange
 
-            change['owner'].description
-            returnedtup = derange(multiplot_range.value) # errors return (-1,-1),(-1,0),(0,-1), good values are all positive
+            # change['owner'].description
+            returnedtup = derange(change['owner'].value) # errors return (-1,-1),(-1,0),(0,-1), good values are all positive
             if sum(returnedtup)<0:
-                multiplot_range.background_color = "mistyrose"
-                multiplot_range.value = multiplot_range0
+                change['owner'].background_color = "mistyrose"
+                if change['owner'].description[0:3] == 'plot':
+                    change['owner'].value = self.plot_range0
+                else:
+                    change['owner'].value = self.bin_range0
             else:
-                multiplot_range.background_color = "white"
+                change['owner'].background_color = "white"
                 if returnedtup[1]>self.histoLength:
                     change['owner'].value=str(returnedtup[0],self.histoLength) if len(returnedtup)==2 else str(returnedtup[0],self.histoLength,returnedtup[2])         
 
@@ -2450,7 +2557,10 @@ class mugui(object):
             if not anim_step.disabled:
                 self.anim_multiplot.event_source.start()
 
-        from ipywidgets import HBox, Button, Text, Textarea, Accordion, Layout, Checkbox, IntText, ToggleButton
+        from ipywidgets import HBox, VBox, Button, Text, Textarea, Accordion, Layout, Checkbox, IntText, ToggleButton, Label, Dropdown
+        ###########
+        # multiplot
+        ###########
         multiplot_button = Button(description='Multiplot',layout=Layout(width='8%'))
         multiplot_button.on_click(on_multiplot)
         multiplot_button.style.button_color = self.button_color
@@ -2465,12 +2575,11 @@ class mugui(object):
         anim_step.on_click(on_step)
         anim_step.style.button_color = self.button_color_off
 
-        multiplot_range0 = '0,7900,10'
-        multiplot_range = Text(description='plot range\nstart,stop[,pack]',
-                               value=multiplot_range0,layout=Layout(width='19%'),
+        self.multiplot_range = Text(description='plot range\nstart,stop[,pack]',
+                               value=self.plot_range0,layout=Layout(width='25%'),
                                continuous_update=False)
-        multiplot_range.style.description_width='43%'
-        multiplot_range.observe(on_range,'value')
+        self.multiplot_range.style.description_width='43%'
+        self.multiplot_range.observe(on_range,'value')
         multiplot_offset0 = '0.1'
         multiplot_offset = Text(description='offset',
                                value=multiplot_offset0,layout=Layout(width='11%'),
@@ -2482,8 +2591,32 @@ class mugui(object):
         self.tlog_accordion.selected_index = None
         # self.tlog_accordion.layout.height='10'
 
-        multiplot = HBox([multiplot_button,anim_check,anim_delay,anim_stop_start,multiplot_range,multiplot_offset,self.tlog_accordion],layout=Layout(width='100%'))
-        self.mainwindow.children[5].children = [multiplot]
+        multibox = HBox([multiplot_button,anim_check,anim_delay,anim_stop_start,self.multiplot_range,multiplot_offset,
+                         Label(layout=Layout(width='3%')),self.tlog_accordion],layout=Layout(width='100%',border='solid'))
+        ###################
+        # counters inspect
+        ###################
+        counterlabel = Label(value='Inspect',layout=Layout(width='7%'))
+        counterplot_button = Button(description='counters',layout=Layout(width='10%'))
+        counterplot_button.on_click(on_counterplot)
+        counterplot_button.style.button_color = self.button_color
+        self.counternumber = Label(value='{} counters per run'.format(' '),layout=Layout(width='15%'))
+        counter_range = Text(description='counters',
+                               value='', continuous_update=False,layout=Layout(width='20%'))
+        counter_range.style.description_width='33%'
+        counter_range.observe(on_counter,'value')
+        self.counterplot_range = Text(description='bins: start,stop',
+                               value=self.bin_range0,continuous_update=False,layout=Layout(width='25%'))
+        self.counterplot_range.style.description_width='40%'
+        self.counterplot_range.observe(on_range,'value')
+        self.choose_nrun = Dropdown(options='0', value='0',description='run', layout=Layout(width='15%'))
+        self.choose_nrun.style.description_width='25%'
+        counterbox = HBox([Label(layout=Layout(width='3%')),counterlabel,counterplot_button,Label(layout=Layout(width='3%')),self.counternumber,
+                          counter_range,self.counterplot_range,self.choose_nrun],layout=Layout(width='100%',border='solid'))
+
+        vbox = VBox()
+        vbox.children = [multibox, counterbox]
+        self.mainwindow.children[5].children = [vbox]
 
 ##########################i
 # SETUP
@@ -2614,9 +2747,11 @@ class mugui(object):
 
             font = {'family' : 'Ubuntu','size'   : 8}
             P.rc('font', **font)
+            dpi = 100.
 
             if not self._the_runs_:
-                norun_msg(self.mainwindow.selected_index, self._output_)
+                norun_msg(self._output_)
+                self.mainwindow.selected_index = 3 
             else:
                 ###################################################
                 # fit a peak with different left and right plateaus
@@ -2626,46 +2761,53 @@ class mugui(object):
                 # guess prompt peak positions
                 ############################# 
                 npeaks = []
-                for det in range(self._the_runs[0][0].get_numberHisto_int()):
-                    histo = np.empty(self._the_runs_[0][0].get_histo_array_int(det).shape)
-                    for k in range(len(self._the_runs[0])): # may add runs
-                        histo += self._the_runs_[0][k].get_histo_array_int(det)
+                for counter in range(self._the_runs_[0][0].get_numberHisto_int()):
+                    histo = np.empty(self._the_runs_[0][0].get_histo_array_int(counter).shape)
+                    for k in range(len(self._the_runs_[0])): # may add runs
+                        histo += self._the_runs_[0][k].get_histo_array_int(counter)
                     npeaks.append(np.where(histo==histo.max())[0][0])
                 npeaks = np.array(npeaks)
 
                 ###############
                 # right plateau
                 ###############
-                nbin =  max(npeaks) + self.second_plateau # this sets a detector dependent second plateau bin interval
+                nbin =  max(npeaks) + self.second_plateau # this sets a counter dependent second plateau bin interval
                 x = np.arange(0,nbin,dtype=int) # nbin bins from 0 to nbin-1
                 self.lastbin, np3s = npeaks.min() - self.prepostpk[0].value, npeaks.max() + self.prepostpk[1].value # final bin of first and 
-                                                                                         # initial bin of second plateaus
 
-                if mplot and self.first_t0plot:
+                if mplot:
 
-#               WARNING number of subplots fits PSI standard instrument only
-                    ##################
-                    # define Figure
-                    ##################
-                    self.figt0,self.axt0 = P.subplots(2,3,figsize=(7.5,5),
-                                                          num='Prompts fit') 
-    
-                x0 = np.zeros(self._the_runs_[0].get_numberHisto_int())
-                if self.first_t0plot:
-                    self.prompt_fit_text = [None]*self._the_runs_[0].get_numberHisto_int()
-                    # print(describe(muprompt))
-                for detector in range(self._the_runs_[0][0].get_numberHisto_int(),sum(self.axt0.shape)):
-                    self.axt0[divmod(detector,3)].cla()
-                    self.axt0[divmod(detector,3)].axis('off')
-                for detector in range(self._the_runs_[0][0].get_numberHisto_int()):
+                    ##############################
+                    #  set or recover figure, axes 
+                    ##############################
+                    if self.fig_counters:
+                        self.fig_counters.clf()
+                        self.fig_counters,self.ax_counters = P.subplots(2,3,figsize=(7.5,5),num=self.fig_counters.number) 
+                    else:
+                        self.fig_counters,self.ax_counters = P.subplots(2,3,figsize=(7.5,5),dpi=dpi)
+                        self.fig_counters.canvas.set_window_title('Prompts fit')
+                    screen_x, screen_y = P.get_current_fig_manager().window.wm_maxsize() # screen size in pixels
+                    y_maxinch = float(screen_y)/dpi #  maximum y size in inches
+
+                    prompt_fit_text = [None]*self._the_runs_[0][0].get_numberHisto_int()    
+
+                    for counter in range(self._the_runs_[0][0].get_numberHisto_int(),sum(self.ax_counters.shape)):
+                        self.ax_counters[divmod(counter,3)].cla()
+                        self.ax_counters[divmod(counter,3)].axis('off')
+
+                x0 = np.zeros(self._the_runs_[0][0].get_numberHisto_int()) # for center of peaks
+                for counter in range(self._the_runs_[0][0].get_numberHisto_int()):
                     # prepare for muprompt fit
-                    histo = np.empty(self._the_runs_[0][0].get_histo_array_int(det).shape)
-                    for k in range(len(self._the_runs[0])): # may add runs
-                        histo += self._the_runs_[0][k].get_histo_array_int(detector)
-                    p = [ self.peakheight, float(npeaks[detector]), self.peakwidth, 
+                    histo = np.empty(self._the_runs_[0][0].get_histo_array_int(counter).shape)
+                    for k in range(len(self._the_runs_[0])): # may add runs
+                        histo += self._the_runs_[0][k].get_histo_array_int(counter)
+                    p = [ self.peakheight, float(npeaks[counter]), self.peakwidth, 
                           np.mean(histo[self.firstbin:self.lastbin]), 
                           np.mean(histo[np3s:nbin])]
                     y = histo[:nbin]
+                    ##############
+                    # guess values
+                    ##############
                     pars = dict(a=p[0],error_a=p[0]/100,x0=p[1]+0.1,error_x0=p[1]/100,dx=1.1,error_dx=0.01,    
                          ak1=p[3],error_ak1=p[3]/100,ak2=p[4],error_ak2=p[4]/100)
                     level = 1 if mprint else 0
@@ -2674,38 +2816,23 @@ class mugui(object):
                     m = Minuit(mm,pedantic=False,print_level=level,**pars)
                     m.migrad()
                     A,X0,Dx,Ak1,Ak2 = m.args
-                    x0[detector] = X0 # store float peak bin position (fractional)     
+                    x0[counter] = X0 # store float peak bin position (fractional)     
                     if mplot:    
 
-                        n1 = npeaks[detector]-50
-                        n2 = npeaks[detector]+50
+                        n1 = npeaks[counter]-50
+                        n2 = npeaks[counter]+50
                         x3 = np.arange(n1,n2,1./10.)
                         # with self.t0plot_container:
 #                       if self.first_t0plot:
-                        self.axt0[divmod(detector,3)].cla()
-                        self.axt0[divmod(detector,3)].plot(x[n1:n2],y[n1:n2],'.')
-                        self.axt0[divmod(detector,3)].plot(x3,mm.f(x3,A,X0,Dx,Ak1,Ak2))
-                        x_text,y_text = npeaks[detector]+10,0.8*max(y)
-                        self.prompt_fit_text[detector] = self.axt0[divmod(detector,3)].text(x_text,y_text,'Det #{}\nt0={}bin\n$\delta$t0={:.2f}'.format
-                                                              (detector+1,x0.round().astype(int)[detector],x0[detector]-x0.round().astype(int)[detector]))
-
-#                            else:
-#                                self.axt0[divmod(detector,3)].lines[0].set_ydata(y[n1:n2])
-#                                self.axt0[divmod(detector,3)].lines[1].set_ydata(mm.f(x3,A,X0,Dx,Ak1,Ak2))
-#                                x_text,y_text =  npeaks[detector]+10,0.8*max(y)
-#                                self.prompt_fit_text[detector].set_position((x_text,y_text))
-#                                self.prompt_fit_text[detector].set_text('Det #{}\nt0={}bin\n$\delta$t0={:.2f}'.format
-#                                                                       (detector+1,self.nt0[detector],self.dt0[detector]))
-#                                self.axt0[divmod(detector,3)].relim() # find new dataLim
-#                                self.axt0[divmod(detector,3)].autoscale_view()
-
+                        self.ax_counters[divmod(counter,3)].cla()
+                        self.ax_counters[divmod(counter,3)].plot(x[n1:n2],y[n1:n2],'.')
+                        self.ax_counters[divmod(counter,3)].plot(x3,mm.f(x3,A,X0,Dx,Ak1,Ak2))
+                        x_text,y_text = npeaks[counter]+10,0.8*max(y)
+                        prompt_fit_text[counter] = self.ax_counters[divmod(counter,3)].text(x_text,y_text,'Det #{}\nt0={}bin\n$\delta$t0={:.2f}'.format
+                                                              (counter+1,x0.round().astype(int)[counter],x0[counter]-x0.round().astype(int)[counter]))
             if mplot:
-                if self.first_t0plot:
-                    P.show()
-                    self.first_t0plot = False              
-                else:
-                    P.draw() # TypeError: draw_wrapper() missing 1 required positional argument: 'renderer'
-
+                P.draw()
+ 
                ##################################################################################################
                 # Simple cases: 
                 # 1) Assume the prompt is entirely in bin nt0. (python convention, the bin index is 0,...,n,... 
@@ -2727,13 +2854,13 @@ class mugui(object):
             # self.t0plot_results.clear_output()
 
            #with self.t0plot_results:
-            #    print('\n\n\n\nRun: {}'.format(self._the_runs_[0].get_runNumber_int()))
+            #    print('\n\n\n\nRun: {}'.format(self._the_runs_[0][0].get_runNumber_int()))
             #    print(' Bin nt0')
-            #    for detector in range(self._the_runs_[0].get_numberHisto_int()):
-            #        print('#{}: {}'.format(detector,self.nt0[detector]))
+            #    for counter in range(self._the_runs_[0][0].get_numberHisto_int()):
+            #        print('#{}: {}'.format(counter,self.nt0[counter]))
             #    print('\n\n dt0 (bins)')
-            #    for detector in range(self._the_runs_[0].get_numberHisto_int()):
-            #        print('#{}: {:.2f}'.format(detector,self.dt0[detector]))
+            #    for counter in range(self._the_runs_[0][0].get_numberHisto_int()):
+            #        print('#{}: {:.2f}'.format(counter,self.dt0[counter]))
             ##################################################################################################
 
         def save_log(b):
@@ -2762,8 +2889,8 @@ class mugui(object):
                     TdT = value_error(run.get_temperatures_vector()[self.thermo],
                                       run.get_devTemperatures_vector()[self.thermo])
                     tsum = 0
-                    for detector in range(run.get_numberHisto_int()):
-                        histo = run.get_histo_array_int(detector).sum()
+                    for counter in range(run.get_numberHisto_int()):
+                        histo = run.get_histo_array_int(counter).sum()
                         tsum += histo
                     BmT = float(run.get_field().strip()[:-1])/10. # convert to mT, avoid last chars 'G '
                     Mev = float(tsum)/1.e6
@@ -2924,12 +3051,12 @@ class mugui(object):
             for k,runs in enumerate(self._the_runs_):
                 tsum, gsum = 0, 0
                 for j,run in enumerate(runs): # add values for runs to add
-                    for detector in range(run.get_numberHisto_int()):
-                        n1 = offset_bin+self.nt0[detector] 
+                    for counter in range(run.get_numberHisto_int()):
+                        n1 = offset_bin+self.nt0[counter] 
                         # if self.nt0 not yet read it is False and totals include prompt
-                        histo = run.get_histo_array_int(detector)[n1:].sum()
+                        histo = run.get_histo_array_int(counter)[n1:].sum()
                         tsum += histo
-                        if detector in gr:
+                        if counter in gr:
                             gsum += histo
                 ts.append(tsum)
                 gs.append(gsum)
@@ -2982,11 +3109,21 @@ class mugui(object):
                         self.nt0[j] = np.where(self._the_runs_[0][0].get_histo_array_int(j)==
                                                self._the_runs_[0][0].get_histo_array_int(j).max())[0][0]
                     with self._output_:
-                        print('WARNING! Run {} mismatch in number of detectors, rerun prompt fit'.format(self._the_runs_[0][0].get_runNumber_int())) 
+                        print('WARNING! Run {} mismatch in number of counters, rerun prompt fit'.format(self._the_runs_[0][0].get_runNumber_int())) 
                     self.mainwindow.selected_index = 3
 
                 # store max available bins on all histos
                 self.histoLength = self._the_runs_[0][0].get_histoLength_bin() - self.nt0.max() - self.offset.value 
+                self.counternumber.value = '    {} counters per run'.format(self._the_runs_[0][0].get_numberHisto_int())
+                self.plot_range0 = '0,{},100'.format(self.histoLength)
+                self.multiplot_range.value = self.plot_range0
+                if self.plot_range.value == '':
+                    self.plot_range.value = self.plot_range0
+                if self.fit_range.value == '':
+                    self.fit_range.value = self.plot_range0                
+                npk = float(self.nt0.sum())/float(self.nt0.shape[0])
+                self.bin_range0 = '{},{}'.format(int(0.9*npk),int(1.1*npk))
+                self.counterplot_range.value = self.bin_range0
             else:  # k > 0 
                 self._single_ = False
                 ok = [self._the_runs_[k][0].get_numberHisto_int() == self._the_runs_[0][0].get_numberHisto_int(),
@@ -3183,10 +3320,14 @@ class mugui(object):
             ##################################
             # load a single run or a run suite
             ##################################
+            read_ok = 0
             for k,runs_add in enumerate(runs):#  rs can be a list of run numbers (string) to add
-                read_ok = add_runs(k,runs_add)                
+                read_ok += add_runs(k,runs_add)                
                 # print('on_loads_change, inside loop, runs {}'.format(self._the_runs_))
-            get_totals() # sets totalcounts, groupcounts and nsbin
+            if read_ok == 0:
+                self.choose_nrun.options  = [str(n) for n in self.nrun]
+                self.choose_nrun.value = str(self.nrun[0])
+                get_totals() # sets totalcounts, groupcounts and nsbin
             if self._single_:
                 check_next()
             if not self.nt0_run:
