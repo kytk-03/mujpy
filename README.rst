@@ -34,4 +34,6 @@ Valid on WIN10 that has a linux shell.
    from mujpy.mugui import mugui
    MuJPy = mugui()
 
-* Run all the cells (if you read that 
+* Run all the cells (if ipywidget does not work at notebook start select Kernel/Restart & Run all)
+
+Documentatation on the GUI usage at http://mujpy.readthedocs.io/en/latest/
