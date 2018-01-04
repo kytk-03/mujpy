@@ -15,9 +15,8 @@ Welcome to mujpy's documentation!
    Tutorial
    Reference
    Examples
-..   Install
-..   ContactTerm
-..   FAQ
+   FAQ
+   Source
 
 
 Indices and tables

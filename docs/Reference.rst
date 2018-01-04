@@ -123,11 +123,14 @@ the ratio of count rates between Backward and Forward grouping.
 * *plot range* 
 
  * *start, stop* to plot data between *start* and *stop* bin, with no rebinning
- * *start,stop,pack* to plot data between *start* and *stop*, rebinned by factor *pack*
- * *start,stop,late,pack* to plot ata in two successive ranges, between *start* and *stop*, with no rebinning, between *stop* and *last* rebinned by factor *pack*
+ * *start,stop,pack* to plot data between *start* and *stop* bin, rebinned by factor *pack*
+ * *start,stop,late,pack* to plot ata in two successive ranges, between *start* and *stop* bin, with no rebinning, between *stop* and *last*  bin, rebinned by factor *pack*
  * *start,stop,packe,late,packl* to plot data in two successive ranges, between *start* and *stop*,  rebinned by factor *packe*, between *stop* and *last* rebinned by factor *packl*
+ * see also `graphic zoom`_
 
-* *fit range* has only the *start, stop* and  *start,stop,pack* options, to define the interval and packing for the fdata minimization.
+
+
+* *fit range* has only the *start, stop* and  *start,stop,pack* options, to define the interval and packing for the fdata minimization. 
 
 * *Update* button, to transfer best fit values to parameter guess values
 * *loadmodel* Text area, to define new model: e.g. ```blmgmg`` is a three component model, ``bl``, ``mg``, ``mg``
@@ -138,9 +141,9 @@ the ratio of count rates between Backward and Forward grouping.
  
 The lower frame contains the fit components selected either by the *loadmodel* syntax or by loding a saved fit. The frame is divided in components boxes, whose first line is the component label and the :ref:`FFT-checKbox`. The other lines list their parameters, each indentified by an index, a unique name, a Text area for the starting guess value, a symbol:
 
- - *~*  free minuit parameter, 
- - *!*  fixed parameter 
- - *=*  the function text area on the right is activated. You can input symple expressions, such as ``p[1]``, implying that the present parameter and parameter 1 share the same value. For instance two *ml* components in model *damlml* could share their phase parameters.
+ - *~*    free minuit parameter, 
+ - *!*    fixed parameter 
+ - *=*    the function text area on the right is activated. You can input symple expressions, such as ``p[1]``, implying that the present parameter and parameter 1 share the same value. For instance two *ml* components in model *damlml* could share their phase parameters. Slightly more complex functions may be written, such as ``p[2]-p[3]``, or ``p[0]*exp(p[2]/p[3])``, etc.
 
 * parameter names are automatically generated and pretty obvious if you are not new to MuSR. E.g. *ml* has a (partial) *asymmetry*, a *field* value (in Tesla), a *phase* (in degrees) and a Lorentzian relaxation *Lor_rate* (in inverse microseconds); 
 * names are followed by a capital letter that uniquely identifies each component (e.g. in a *blmlml* fit the asymmetries of the three components would be *asymmetryA*, *asymmetryB*, *asymmetryC*, respectively) 
@@ -151,16 +154,92 @@ The lower frame contains the fit components selected either by the *loadmodel* s
 Static component list
 ---------------------
 
-* **bg**, Lorentz decay: :math:`\mbox{asymmetry}\exp(-\mbox{Lor_rate}\,t)`,
-* **bg**, Gauss decay: :math:`\mbox{asymmetry}\exp(-0.5(\mbox{Gau_rate}\,t)^2)`,
-* **bs**, Gauss decay: :math:`\mbox{asymmetry}\exp(-0.5(\mbox{rate}\, t)^\beta)`,
-* **da**, Linearized dalpha correction: :math:`f = \frac{2f_0(1+\alpha/\mbox{dalpha})-1}{1-f_0+2\alpha/\mbox{dalpha}}`,
-* **mg**, Gauss decay: :math:`\mbox{asymmetry}\cos[2\pi(\gamma_\mu \mbox{field}\, t +\mbox{phase}/360)]\exp(-0.5(\mbox{Gau_rate\,}t)^2)`,
-* **ml**, Gauss decay: :math:`\mbox{asymmetry}\cos[2\pi(\gamma_\mu \mbox{field}\, t +\mbox{phase}/360)]\exp(-\mbox{Lor_rate}\,t)`,
-* **ms**, Gauss decay: :math:`\mbox{asymmetry}\cos[2\pi(\gamma_\mu \mbox{field}\, t +\mbox{phase}/360)]\exp(-(\mbox{rate}\,t)^\beta)`,
-* **jg**, Gauss Bessel: :math:`\mbox{asymmetry} j_0[2\pi(\gamma_\mu \mbox{field}\, t +\mbox{phase}/360)]\exp(-0.5(\mbox{Lor_rate}\,t)^2)`,
-* **jl**, Lorentz Bessel: :math:`\mbox{asymmetry}j_0[2\pi(\gamma_\mu \mbox{field}\, t +\mbox{phase}/360)]\exp(-0.5(\mbox{Lor_rate}\,t)^2)`,
-* **fm**, FMuF: :math:`\mbox{asymmetry}/6[3+\cos 2*\pi\gamma_\mu\mbox{dipfield}\sqrt{3}\, t + (1-1/\sqrt{3})\cos \pi\gamma_\mu\mbox{dipfield}(3-\sqrt{3})\,t` :math:`+ (1+1/\sqrt{3})\cos\pi\gamma_\mu\mbox{dipfield}(3+\sqrt{3})\,t ]\exp(-\mbox{Lor_rate}\,t)`, 
+A few constants are defined: :math:`\pi`, the muon gyromagnetic ratio, :math:`\gamma_\mu`, the electron gyromagnetic ratio, :math:`\gamma_e`
+
+* **bl**, Lorentz decay: 
+
+  * asymmetry :math:`A`
+  * Lor_rate (:math:`\mu s^{-1}`) :math:`\lambda`
+    
+.. math:: A\exp(-\lambda t)  
+
+* **bg**, Gauss decay: 
+
+  * asymmetry :math:`A`
+  * Gau_rate (:math:`\mu s^{-1}`) :math:`\sigma`
+
+.. math:: A\exp\left(-\frac {\sigma^2 t^2} 2\right)
+
+* **bs**, Stretched exponential decay: 
+ 
+  * asymmetry :math:`A`
+  * rate (:math:`\mu s^{-1}`) :math:`\lambda`
+  * beta :math:`\beta`
+
+.. math:: A \exp \left(-(\lambda t)^\beta \right)
+
+* **da**, Linearized dalpha correction. If :math:`f_0` is the uncorrected, :math:`f` the corrected fitting function and :math:`\alpha` the `alpha`_ ratio:
+
+  * dalpha :math:`d\alpha` the linear correction
+
+.. math:: f = \frac{2f_0(1+\frac \alpha{d\alpha})-1}{1-f_0+2\frac \alpha {d\alpha}}
+
+* **mg**, Gauss decay cosine precession: 
+
+  * asymmetry :math:`A`
+  * field (T) :math:`B`
+  * phase (degrees) :math:`\phi`
+  * Gau_rate (:math:`\mu s^{-1}`) :math:`\sigma`
+  
+
+.. math:: A\cos(\gamma_\mu B t + \frac{2\pi}{360}\phi)\,\exp\left(-\frac {\sigma^2 t^2} 2\right)
+
+
+* **ml**, Lorentz decay cosine precession: 
+
+  * asymmetry :math:`A`
+  * field (T) :math:`B`
+  * phase (degrees) :math:`\phi`
+  * Lor_rate (:math:`\mu s^{-1}`) :math:`\lambda`
+
+.. math:: A\cos(\gamma_\mu B t + \frac{2\pi}{360}\phi)\,\exp(-\lambda t )
+
+* **ms**, Stretched exponential decay cosine precession: 
+
+  * asymmetry :math:`A`
+  * field (T) :math:`B`
+  * phase (degrees) :math:`\phi`
+  * rate (:math:`\mu s^{-1}`) :math:`\lambda`
+
+.. math:: A\cos(\gamma_\mu B t +\frac{2\pi}{360}\phi)\,\exp \left(-(\lambda t)^\beta \right)
+
+* **jg**, Gauss decay Bessel precession 
+
+  * asymmetry :math:`A`
+  * field (T) :math:`B`
+  * phase (degrees) :math:`\phi`
+  * Gau_rate (:math:`\mu s^{-1}`) :math:`\sigma`
+
+
+.. math:: A j_0 (\gamma_\mu B t  +\frac{2\pi}{360}\phi)\,\exp\left(-\frac {\sigma^2 t^2} 2\right)
+
+* **jl**, Lorentz decay Bessel  precession 
+
+  * asymmetry :math:`A`
+  * field (T) :math:`B`
+  * phase (degrees) :math:`\phi`
+  * Lor_rate (:math:`\mu s^{-1}`) :math:`\lambda`
+
+.. math:: A j_0 (\gamma_\mu B t  +\frac{2\pi}{360}\phi)\,\exp\left(-\lambda t )
+
+* **fm**, FMuF coherent evolution: 
+
+  * asymmetry :math:`A`
+  * dipolar field (T) :math:`B_d`
+  * Lor_rate (:math:`\mu s^{-1}`) :math:`\lambda`
+
+.. math:: A\,\exp(-\lambda\,t)[\frac 1 2+\frac 1 6 \cos \gamma_\mu B_d \sqrt{3}\, t + \frac{1-\frac 1 {\sqrt{3}}} 6 \cos \gamma_\mu B_d\frac {3-\frac 1\sqrt{3}}2\,t + \frac{1+\frac 1 {\sqrt{3}} 6b\cos\gamma_\mu B_d (3+\sqrt{3})\,t ]
+
 * **kg**, Gauss Kubo-Toyabe: static and dynamic, in zero or longitudinal field by `G. Allodi Phys Scr 89, 115201 <https://arxiv.org/abs/1404.1216>`_
 
 
@@ -196,12 +275,46 @@ Selects subtracted components for the FFT. E.g. assume best fit model ``blmgmg``
 -----
 plots
 -----
+This tab has two rows. The first is for Multiplot of run suites. The second is for Counter inspection.
 
-* Multiplot of run suites, both in animation and tiled versions
-* Plots of best fit parameters [to do]
+.. image:: plots.png
 
+Multiplot
+---------
+
+* The *Multiplot* button produces the asymmetry plot of a suite of runs.
+* The *Animate* checkbox, select to produce one frame per run.
+* The *Delay (ms)* Integer Text area, determines the delay between frames (effective after pushing again the *Multiplot* button).
+* The *start/stop* button toggles the animation
+* The *plot range* Text area is for changing start, stop [,pack] bins; the numbers will be considered as integers. When a new run suite is loaded it automatically offers a range centered around the prompt peak. For zooming, see also the `graphic zoom`_
+* The *offset* is a factor that determines the y offset :math:`\Delta y` between run asymmetries, in tile mode, according to the formula :math:`\Delta y = \text{offset}\cdot \max(f)`, where :math:`\max(f)` is the global maximum of the fit function (over all displayed runs)  
+* *run T(eT)* is an accordion: click on it and it will display the run temperatures, as recorded in the header (averages over the run duration).
+
+
+Counter inspection
+------------------
+
+* The *Counter* button produces the plot.
+* The next label reminds how many are the available counters.
+* The *counters* Text area allows the selection of the displayed detectors. The syntax is the same as for `grouping`_. It is advisable not to display more than 16 detetcors at a time
+* *bin*, text area to select *start*, *stop*, the same range for all chosen detectors. Zoom also by the the `graphic zoom`_
+* *run* dropdown selects one run at a time among the loaded suite.
+
+graphic zoom
+------------
+All graphic windows display seven icons on the bottom bar
+
+* The |save| icon, far right, opens a dialogue for sabìving the plot.
+* The |center| icon, next one to the left, corrects the axes position
+* the |zoom| icon, allows zooming in.
+* The first icon on the left, |home|, resets the zoom to the orginal ranges
 
 -----
 about
 -----
 A few infos and acknowledgements
+
+.. |save| image:: save-icon.png
+.. |center| image:: center-icon.png
+.. |zoom| image:: zoom-icon.png
+.. |home| image:: home-icon.png
