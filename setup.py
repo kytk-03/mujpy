@@ -2,7 +2,7 @@
 from setuptools import setup
     
 setup(name='mujpy',
-      version='0.1',
+      version='1.0.1',
       description='A Python MuSR data analysis graphical interface based on classes, designed for jupyter.',
       author='Roberto De Renzi, Pietro Bonfa',
       author_email='roberto.derenzi@unipr.it',
@@ -20,6 +20,4 @@ setup(name='mujpy',
             'ipywidgets >= 7.0',
             'iminuit >= 1.2',
             'matplotlib >= 2.0'
-      ],
-#      test_suite="",
-      zip_save = False)
+      ]
