@@ -20,4 +20,5 @@ setup(name='mujpy',
             'ipywidgets >= 7.0',
             'iminuit >= 1.2',
             'matplotlib >= 2.0'
-      ]
+      ],
+)
