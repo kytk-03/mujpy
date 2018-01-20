@@ -2720,7 +2720,6 @@ class mugui(object):
         options = {} # empty slot to start with
         self.choose_tlogrun = Dropdown(options=options,description='Tlog run', layout=Layout(width='15%')) #
         self.choose_tlogrun.style.description_width='25%'
-        print('dropdown.options is {}'.format(self.choose_tlogrun.options))
         nexttlog_button = Button(description='Next',layout=Layout(width='10%'))
         nexttlog_button.on_click(on_nexttlog)
         nexttlog_button.style.button_color = self.button_color
