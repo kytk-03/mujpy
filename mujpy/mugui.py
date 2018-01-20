@@ -100,6 +100,7 @@ class mugui(object):
         self.fig_fft = [] # initialize to false, it will become a pyplot.subplots instance
         self.fig_multiplot = []
         self.fig_counters = []
+        self.fig_tlog = []
 #        self.graph_fit = Toplevel()
 #        canvas_fit = FigureCanvas(self.fig_fit, master=self.graph_fit)
 #        canvas_fit.get_tk_widget().pack()
@@ -2524,7 +2525,7 @@ class mugui(object):
             check for validity of function syntax
             on_range (PLOTS, FIT, FFT) perhaps made universal and moved to aux
             '''
-            from mujpy.aux.derange import derange
+            from mujpy.aux.aux import derange
 
             # change['owner'].description
             returnedtup = derange(change['owner'].value) # errors return (-1,-1),(-1,0),(0,-1), good values are all positive
@@ -2538,6 +2539,28 @@ class mugui(object):
                 change['owner'].background_color = "white"
                 if returnedtup[1]>self.histoLength:
                     change['owner'].value=str(returnedtup[0],self.histoLength) if len(returnedtup)==2 else str(returnedtup[0],self.histoLength,returnedtup[2])         
+
+        def on_nexttlog(b):
+            '''
+            select next run tlog
+            '''
+            runs = self.choose_tlogrun.options.keys()
+            runs = sorted([int(run) for run in runs])
+            runindex = runs.index(self.choose_tlogrun.options.index(self.choose_tlogrun.value))
+            if runindex > 0:
+                self.choose_tlogrun.value = str(runs.index(runindex-1))
+                on_tlogdisplay([])
+
+        def on_prevtlog(b):
+            '''
+            select prev run tlog
+            '''
+            runs = self.choose_tlogrun.options.keys()
+            runs = sorted([int(run) for run in runs])
+            runindex = runs.index(self.choose_tlogrun.options.index(self.choose_tlogrun.value))
+            if runindex < len(runs):
+                self.choose_tlogrun.value = str(runs.index(runindex+1))
+                on_tlogdisplay([])
 
         def on_start_stop(change):
             if anim_check.value: 
@@ -2557,42 +2580,115 @@ class mugui(object):
             if not anim_step.disabled:
                 self.anim_multiplot.event_source.start()
 
+        def on_tlogdisplay(b):
+            '''
+            display a PSI tlog if the files exist
+            '''
+            import os
+            import matplotlib.pyplot as P
+            from mujpy.aux.aux import muzeropad
+            from numpy import array, mean, std
+            import csv
+            from matplotlib.dates import HourLocator, MinuteLocator, DateFormatter
+            import datetime
+            from datetime import datetime as d
+
+            ################
+            # load tlog file
+            ################
+            pathfile = os.path.join(self.paths[1].value,'run_'+muzeropad(self.choose_tlogrun.value,'')+'.mon')
+            with open(pathfile,'r') as f:
+                reader=csv.reader(f)
+                header, t, T1,T2,pause,go = [],[],[],[],[],[]
+                for k in range(9):
+                    header.append(next(reader))
+                # print(header[7][0][2:22])
+                starttime = header[7][0][2:22]
+                start = d.strptime(starttime, "%d-%b-%Y %H:%M:%S")
+                # print(start)
+                for row in reader:
+                    # print(row)
+                    if row[0][0]!='!':
+                        row = row[0].split('\\')
+                        stop = d.strptime(row[0], "%H:%M:%S")
+                        row = row[2].split()
+                        T1.append(float(row[0]))
+                        T2.append(float(row[1]))
+                        # print('record = {}, stop = {}'.format(row[0][0:8],stop.time()))
+                        time = stop.time()
+                        t.append(time.hour*60.+time.minute+time.second/60.)
+                        # print('{}'.format(t))
+                    else:
+                        # print(row)
+                        if row[0][24:29]=='Paused':
+                            pause.append(d.strptime(row[0][2:22], "%d-%b-%Y %H:%M:%S"))
+                        else:
+                            go.append(d.strptime(row[0][2:22], "%d-%b-%Y %H:%M:%S"))
+            ##############################
+            #  set or recover figure, axes 
+            ##############################
+            if self.fig_tlog:
+                self.fig_tlog.clf()
+                self.fig_tlog,self.ax_tlog = P.subplots(num=self.fig_tlog.number) 
+            else:
+                self.fig_tlog,self.ax_tlog = P.subplots()
+                self.fig_tlog.canvas.set_window_title('Tlogger')
+            T1,T2 = array(T1), array(T2)
+            self.ax_tlog.plot(t,T1,'r-',label='T1')
+            self.ax_tlog.plot(t,T2,'b-',label='T2')
+            tlim,Tlim = self.ax_tlog.get_xlim(), self.ax_tlog.get_ylim()
+            T1ave, T1std, T2ave, T2std = mean(T1),std(T1),mean(T2),std(T2)
+            self.ax_tlog.plot(tlim,[T1ave, T1ave],'r-',lw=0.5,alpha=0.8)
+            self.ax_tlog.fill_between(tlim, [T1ave-T1std,T1ave-T1std ],[T1ave, T1ave],facecolor='r',alpha=0.2)
+            self.ax_tlog.fill_between(tlim, [T1ave+T1std,T1ave+T1std ],[T1ave, T1ave],facecolor='r',alpha=0.2)
+            self.ax_tlog.plot(tlim,[T2ave, T2ave],'b-',lw=0.5,alpha=0.8)
+            self.ax_tlog.fill_between(tlim, [T2ave-T2std,T2ave-T2std ],[T2ave, T2ave],facecolor='b',alpha=0.2)
+            self.ax_tlog.fill_between(tlim, [T2ave+T2std,T2ave+T2std ],[T2ave, T2ave],facecolor='b',alpha=0.2)
+            self.ax_tlog.set_title('Run '+self.choose_tlogrun.value+' start at '+starttime)
+            self.ax_tlog.set_xlabel('time [min]')
+            self.ax_tlog.set_ylabel('T [k]')
+            self.ax_tlog.legend()
+            if Tlim[1]-Tlim[0] < 1.:
+                T0 = (Tlim[0]+Tlim[1])/2
+                self.ax_tlog.set_ylim(T0-1.,T0+0.5)
+            y1,y2 = self.ax_tlog.get_ylim()
+            for x1,x2 in zip(pause,go):
+                self.ax_tlog.fill_between([x1,x2], [y1,y1 ],[y2,y2],facecolor='k',alpha=0.5)
+                self.ax_tlog.text(x1*0.9+x2*0.1,y1*0.9+y2*0.1,'PAUSE',color='w')
+            P.show()
+
         from ipywidgets import HBox, VBox, Button, Text, Textarea, Accordion, Layout, Checkbox, IntText, ToggleButton, Label, Dropdown
         ###########
         # multiplot
         ###########
-        multiplot_button = Button(description='Multiplot',layout=Layout(width='8%'))
+        multiplot_button = Button(description='Multiplot',layout=Layout(width='10%'))
         multiplot_button.on_click(on_multiplot)
         multiplot_button.style.button_color = self.button_color
-        anim_check = Checkbox(description='Animate',value=True, layout=Layout(width='9%'))
+        anim_check = Checkbox(description='Animate',value=True, layout=Layout(width='10%'))
         anim_check.style.description_width = '1%'
-        anim_delay = IntText(description='Delay (ms)',value=1000, layout=Layout(width='17%'))
+        anim_delay = IntText(description='Delay (ms)',value=1000, layout=Layout(width='20%'))
         anim_delay.style.description_width = '45%'
-        anim_stop_start = ToggleButton(description='start/stop',value=True,layout={'width':'9%'})
+        anim_stop_start = ToggleButton(description='start/stop',value=True,layout={'width':'12%'})
         anim_stop_start.observe(on_start_stop,'value')
         # anim_stop_start.style.button_color = self.button_color
-        anim_step = Button(description='step',layout={'width':'8%'})
+        anim_step = Button(description='step',layout={'width':'10%'})
         anim_step.on_click(on_step)
         anim_step.style.button_color = self.button_color_off
 
         self.multiplot_range = Text(description='plot range\nstart,stop[,pack]',
-                               value=self.plot_range0,layout=Layout(width='25%'),
+                               value=self.plot_range0,layout=Layout(width='26%'),
                                continuous_update=False)
         self.multiplot_range.style.description_width='43%'
         self.multiplot_range.observe(on_range,'value')
         multiplot_offset0 = '0.1'
         multiplot_offset = Text(description='offset',
-                               value=multiplot_offset0,layout=Layout(width='11%'),
+                               value=multiplot_offset0,layout=Layout(width='12%'),
                                continuous_update=False)
         multiplot_offset.style.description_width='35%'
-        self.tlog_accordion = Accordion(children=[Textarea(layout={'width':'100%','height':'200px',
-                                                 'overflow_y':'auto','overflow_x':'auto'})])
-        self.tlog_accordion.set_title(0,'run: T(eT)')
-        self.tlog_accordion.selected_index = None
         # self.tlog_accordion.layout.height='10'
 
         multibox = HBox([multiplot_button,anim_check,anim_delay,anim_stop_start,self.multiplot_range,multiplot_offset,
-                         Label(layout=Layout(width='3%')),self.tlog_accordion],layout=Layout(width='100%',border='solid'))
+                         Label(layout=Layout(width='3%'))],layout=Layout(width='100%',border='solid'))
         ###################
         # counters inspect
         ###################
@@ -2609,13 +2705,39 @@ class mugui(object):
                                value=self.bin_range0,continuous_update=False,layout=Layout(width='25%'))
         self.counterplot_range.style.description_width='40%'
         self.counterplot_range.observe(on_range,'value')
-        self.choose_nrun = Dropdown(options='0', value='0',description='run', layout=Layout(width='15%'))
+        self.choose_nrun = Dropdown(options=[], description='run', layout=Layout(width='15%'))
         self.choose_nrun.style.description_width='25%'
         counterbox = HBox([Label(layout=Layout(width='3%')),counterlabel,counterplot_button,Label(layout=Layout(width='3%')),self.counternumber,
                           counter_range,self.counterplot_range,self.choose_nrun],layout=Layout(width='100%',border='solid'))
 
+        ##########
+        # TLOG PSI
+        ##########
+        tloglabel = Label(value='Tlog',layout=Layout(width='7%'))
+        tlog_button = Button(description='display',layout=Layout(width='10%'))
+        tlog_button.on_click(on_tlogdisplay)
+        tlog_button.style.button_color = self.button_color
+        options = {} # empty slot to start with
+        self.choose_tlogrun = Dropdown(options=options,description='Tlog run', layout=Layout(width='15%')) #
+        self.choose_tlogrun.style.description_width='25%'
+        print('dropdown.options is {}'.format(self.choose_tlogrun.options))
+        nexttlog_button = Button(description='Next',layout=Layout(width='10%'))
+        nexttlog_button.on_click(on_nexttlog)
+        nexttlog_button.style.button_color = self.button_color
+        prevtlog_button = Button(description='Prev',layout=Layout(width='10%'))
+        prevtlog_button.on_click(on_prevtlog)
+        prevtlog_button.style.button_color = self.button_color      
+
+        self.tlog_accordion = Accordion(children=[Textarea(layout={'width':'100%','height':'200px',
+                                                 'overflow_y':'auto','overflow_x':'auto'})])
+        self.tlog_accordion.set_title(0,'run: T(eT)')
+        self.tlog_accordion.selected_index = None
+
+        tlogbox = HBox([Label(layout=Layout(width='3%')),tloglabel,tlog_button,Label(layout=Layout(width='3%')),self.choose_tlogrun,
+                         nexttlog_button,prevtlog_button, self.tlog_accordion],layout=Layout(width='100%',border='solid'))
+
         vbox = VBox()
-        vbox.children = [multibox, counterbox]
+        vbox.children = [multibox, counterbox, tlogbox]
         self.mainwindow.children[5].children = [vbox]
 
 ##########################i
@@ -3197,6 +3319,7 @@ class mugui(object):
             '''
             Tries to load one or more runs to be added together
             by means of murs2py. 
+            runs is a list of strings containing integer run numbers (provided by aux.derange)
             Returns -1 and quits if musr2py complains
             If not invokes check_runs an returns its code   
             '''
@@ -3205,7 +3328,8 @@ class mugui(object):
             from mujpy.aux.aux import muzeropad
             read_ok = 0
             runadd = []
-            for j,run in enumerate(runs): # run is a single run number (string)
+            options = self.choose_tlogrun.options.copy()
+            for j,run in enumerate(runs): # run is a string containing a single run number
                 filename = ''
                 filename = filename.join([self.filespecs[0].value,
                                       muzeropad(str(run),self._output_),
@@ -3214,14 +3338,19 @@ class mugui(object):
                                 # data path + filespec + padded run rumber + extension)
                 runadd.append(muload())  # this adds to the list in j-th position a new instance of muload()
                 read_ok += runadd[j].read(path_and_filename) # THE RUN DATA FILE IS LOADED HERE
-            if read_ok==0: # error condition, set by musr2py.cpp
+                if read_ok==0:
+                    # print('tlog dropdown position {} run {}'.format(str(j),str(run)))
+                    options.update({str(run):str(run)}) # adds this run to the tlog display dropdown, on_loads_changed checks that tlog exists before value selection
+            if read_ok==0: # error condition, set by musr2py.cpp 
+                self.choose_tlogrun.options=options
+                # ('self.choose_tlogrun.options = {}'.format(options))
                 self._the_runs_.append(runadd) # 
                 self.nrun.append(runadd[0].get_runNumber_int())
             else:
                 self.mainwindow.selected_index = 3
                 with self._output_:
-                    print ('\nFile {} not read. Check paths, filespecs and run rumber on setup tab'.
-                            format(path_and_filename))
+                    #  ('\nFile {} not read. Check paths, filespecs and run rumber on setup tab'.
+                            format(path_and_filename)
                 return -1 # this leaves the previous loaded runs n the suite 
             return check_runs(k)
 
@@ -3296,8 +3425,8 @@ class mugui(object):
                   and all occurencies of self._the_runs_ must test to add data from len(self._the_runs_[k])>1
                     check also asymmetry, create_rundict, write_csv, get_totals, promptfit, on_multiplot
             '''
-            from mujpy.aux.aux import derun
-
+            from mujpy.aux.aux import derun, tlog_exists
+ 
             # rm: run_or_runs = change['owner'].description # description is either 'Single run' or 'Run  suite'
             if self.load_handle[0].value=='': # either an accitental empty text return, or reset due to derun error
                 return
@@ -3312,7 +3441,7 @@ class mugui(object):
             runs, errormessage = derun(self.load_handle[0].value) # runs is a list of lists of run numbers (string)
             if errormessage is not None: # derun error
                 with self._output_:
-                   print('Run syntax error: {}'.format(errormessage))
+                   print('Run syntax error: {}. You typed: {}'.format(errormessage,self.load_handle[0].value))
                 self.load_handle[0].value=''
                 self.mainwindow.selected_index=3
                 return
@@ -3327,7 +3456,17 @@ class mugui(object):
             if read_ok == 0:
                 self.choose_nrun.options  = [str(n) for n in self.nrun]
                 self.choose_nrun.value = str(self.nrun[0])
+                options = self.choose_tlogrun.options.copy()
+                runs = self.choose_tlogrun.options.keys() 
+                # scheme for popping items from list without altering index count
+                kk = 0
+                for run in runs: # use original to iterate
+                    if not tlog_exists(self.paths[1].value,run,self._output_): # loading tlogs is optional
+                        options.pop(key) # pop runs that do not have a tlog file
+                self.choose_tlogrun.options = options
+                self.choose_tlogrun.value = str((sorted(list(options.keys())))[0])
                 get_totals() # sets totalcounts, groupcounts and nsbin
+                
             if self._single_:
                 check_next()
             if not self.nt0_run:

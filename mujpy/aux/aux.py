@@ -220,6 +220,8 @@ def derun(string):
             kcolon = b.find(':') # ':' and '+' are mutually exclusive
             kplus = b.find('+')
             if kcolon>0: # value might be a range
+                if int(b[:kcolon])>int(b[kcolon+1:]):
+                    errmsg='typo!'
                 for j in range(int(b[:kcolon]),int(b[kcolon+1:])+1):
                     s.append([str(j)]) # strings
             elif kplus>0:
@@ -536,6 +538,16 @@ def set_bar(n,b):
     verts[3::5, 1] = bottom
     xlim = [left[0], right[-1]]
     return verts, codes, bottom, xlim
+
+def tlog_exists(path,run,out):
+    '''
+    check if tlog exists under various known filenames
+    '''
+    import os
+
+    filename_psibulk = 'run_'+muzeropad(run,out)+'.mon' # add definitions for e.g. filename_isis
+    ok = os.path.exists(os.path.join(path,filename_psibulk)) # or os.path.exists(os.path.join(paths,filename_isis))
+    return ok
 
 def translate(nint,lmin,function):
     string = function[nint].value
