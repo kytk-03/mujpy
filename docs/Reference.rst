@@ -275,7 +275,7 @@ Selects subtracted components for the FFT. E.g. assume best fit model ``blmgmg``
 -----
 plots
 -----
-This tab has two rows. The first is for Multiplot of run suites. The second is for Counter inspection.
+This tab has three rows. The first is for Multiplot of run suites. The second is for Counter inspection. The third for the temperature logs.
 
 .. image:: plots.png
 
@@ -299,6 +299,14 @@ Counter inspection
 * The *counters* Text area allows the selection of the displayed detectors. The syntax is the same as for `grouping`_. It is advisable not to display more than 16 detetcors at a time
 * *bin*, text area to select *start*, *stop*, the same range for all chosen detectors. Zoom also by the the `graphic zoom`_
 * *run* dropdown selects one run at a time among the loaded suite.
+
+Tlogs
+-----
+
+* The *display* button produces the plot.
+* The *Tlog run* dropdown to select the temperature log among the runs loaded in `suite`_
+* *Next* and *Previous* buttons to step forward or backwards in the list of loaded runs 
+* *run T(eT)* accordion shows mean temperatures and std deviations for each run (for now, GPS is the reference, i.e. Th 2 is the sample temperature)
 
 graphic zoom
 ------------
