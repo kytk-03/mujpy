@@ -64,7 +64,7 @@ class mugui(object):
         self.bin_range0 = '0,500' # initialize (for plots, counter inspection)
         self.nt0_run = []
         self._global_ = False
-        self.thermo = 1 # sample thermometer is 0?
+        self.thermo = 1 # sample thermometer is 1 on gps (check or adapt to other instruments)
 
         self.binwidth_ns = [] # this way the first call to asymmetry(_the_runs_) initializes self.time
         self.grouping = {'forward':np.array([1]),'backward':np.array([0])} # normal dict
