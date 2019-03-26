@@ -15,13 +15,8 @@ setup(name='mujpy',
                 ],
       include_package_data=True,
       package_dir={'mujpy': 'mujpy' },
-      install_requires=[
-            'numpy >= 1.6',
-            'ipywidgets >= 7.0',
-            'iminuit >= 1.2',
-            'matplotlib >= 2.0'
-      ],
-      long_description='A Python MuSR data analysis graphical interface, based on classes, designed for jupyter, making use of ipywidgets.'
+      install_requires=['iminuit,ipywidgets,jupiter,numpy,scipy,matplotlib,dill'],
+      long_description='A Python MuSR data analysis graphical interface, based on classes, designed for jupyter, making use of ipywidgets.',
       license = 'MIT',
       classifiers=[
             'Development Status :: 4 - Beta',
@@ -33,6 +28,5 @@ setup(name='mujpy',
     # that you indicate whether you support Python 2, Python 3 or both.
     'Programming Language :: Python :: 2',
     'Programming Language :: Python :: 3',
-],
-      install_requires=['iminuit,ipywidgets,jupiter,numpy,scipy,matplotlib,dill'],
+    ]
 )
