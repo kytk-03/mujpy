@@ -15,7 +15,15 @@ setup(name='mujpy',
                 ],
       include_package_data=True,
       package_dir={'mujpy': 'mujpy' },
-      install_requires=['iminuit,ipywidgets,jupiter,numpy,scipy,matplotlib,dill'],
+      install_requires=[
+          'numpy >= 1.6',
+          'ipywidgets >= 7.0',
+          'iminuit >= 1.2',
+          'matplotlib >= 2.0',
+          'jupyter',
+          'scipy',
+          'dill'
+      ],
       long_description='A Python MuSR data analysis graphical interface, based on classes, designed for jupyter, making use of ipywidgets.',
       license = 'MIT',
       classifiers=[
