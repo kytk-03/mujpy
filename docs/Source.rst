@@ -20,13 +20,13 @@ Source documentation
 
 
 
-:mod:`mujpy.aux` -- Auxiliary functionalities
+:mod:`mujpy.auxiliary` -- auxiliary functionalities
 +++++++++++++++++++++++++++++++++++++++++++++
 
-:mod:`mujpy.aux.aux` -- Various useful functions
+:mod:`mujpy.auxiliary.auxiliary` -- Various useful functions
 ------------------------------------------------
 
-.. automodule:: mujpy.aux.aux
+.. automodule:: mujpy.auxiliary.auxiliary
    :members:
    :undoc-members:
    :show-inheritance:

@@ -141,7 +141,7 @@ def ps(data, p0=0.0, p1=0.0, inv=False):
     return apod * data
 
 ##############
-# MUGUI AUX
+# MUGUI auxiliary
 ##############
 
 def derange(string):
